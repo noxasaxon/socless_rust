@@ -114,17 +114,17 @@ pub async fn create_events(
 
     let playbook_arn = get_playbook_arn(playbook, &lambda_context);
 
+    let events_table_name = std::env::var("SOCLESS_EVENTS_TABLE")
+    .expect("No env var found for SOCLESS_EVENTS_TABLE, please check serverless.yml");
+
     let mut events_subset: Vec<EventTableItem> = vec![];
     for event in formatted_events {
         let deduplicated = deduplicate(event).await;
 
-        let events_table_name = std::env::var("SOCLESS_EVENTS_TABLE")
-            .expect("No env var found for SOCLESS_EVENTS_TABLE, please check serverless.yml");
-
         let event_table_input = EventTableItem::from(deduplicated);
 
         let input = PutItemInput {
-            table_name: events_table_name,
+            table_name: events_table_name.to_owned(),
             item: to_item(event_table_input.clone()).unwrap(),
             ..PutItemInput::default()
         };
