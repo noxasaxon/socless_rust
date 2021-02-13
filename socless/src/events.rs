@@ -14,7 +14,10 @@ use std::collections::HashMap;
 use std::env;
 use uuid::Uuid;
 
-use crate::helpers::{get_item_from_table, put_item_in_table};
+use crate::{
+    helpers::{get_item_from_table, put_item_in_table},
+    EventTableItem, PlaybookArtifacts, PlaybookInput, ResultsTableItem, SoclessEvent,
+};
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct SoclessEventBatch {
@@ -25,74 +28,6 @@ pub struct SoclessEventBatch {
     pub data_types: Option<HashMap<String, String>>,
     pub event_meta: Option<HashMap<String, String>>,
     pub dedup_keys: Option<Vec<String>>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub struct SoclessEvent {
-    pub id: String,
-    pub investigation_id: String,
-    pub status_: String,
-    pub is_duplicate: bool,
-    pub created_at: String,
-    pub event_type: String,
-    pub playbook: String,
-    pub details: HashMap<String, Value>, // single dict with unknown types
-    pub data_types: HashMap<String, String>,
-    pub event_meta: HashMap<String, String>,
-    pub dedup_keys: Vec<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub struct ResultsTableItem {
-    pub execution_id: String,
-    pub investigation_id: String,
-    pub datetime: String,
-    pub results: PlaybookInput,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct PlaybookInput {
-    pub artifacts: PlaybookArtifacts,
-    pub results: HashMap<String, Value>,
-    pub errors: HashMap<String, Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct PlaybookArtifacts {
-    pub event: EventTableItem,
-    pub execution_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct EventTableItem {
-    // no dedup_keys
-    pub id: String,
-    pub investigation_id: String,
-    pub status_: String,
-    pub is_duplicate: bool,
-    pub created_at: String,
-    pub event_type: String,
-    pub playbook: String,
-    pub details: HashMap<String, Value>, // single dict with unknown types
-    pub data_types: HashMap<String, String>,
-    pub event_meta: HashMap<String, String>,
-}
-
-impl From<SoclessEvent> for EventTableItem {
-    fn from(event: SoclessEvent) -> Self {
-        EventTableItem {
-            id: event.id,
-            investigation_id: event.investigation_id,
-            status_: event.status_,
-            is_duplicate: event.is_duplicate,
-            created_at: event.created_at,
-            event_type: event.event_type,
-            playbook: event.playbook,
-            details: event.details,
-            data_types: event.data_types,
-            event_meta: event.event_meta,
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -115,7 +50,7 @@ pub async fn create_events(
     let playbook_arn = get_playbook_arn(playbook, &lambda_context);
 
     let events_table_name = std::env::var("SOCLESS_EVENTS_TABLE")
-    .expect("No env var found for SOCLESS_EVENTS_TABLE, please check serverless.yml");
+        .expect("No env var found for SOCLESS_EVENTS_TABLE, please check serverless.yml");
 
     let mut events_subset: Vec<EventTableItem> = vec![];
     for event in formatted_events {

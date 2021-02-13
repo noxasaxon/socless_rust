@@ -1,8 +1,7 @@
 /// Compare to https://github.com/twilio-labs/socless_python/blob/master/socless/integrations.py
 use crate::{
-    events::{PlaybookArtifacts, ResultsTableItem},
     fetch_utf8_from_vault, get_item_from_table, json_merge, split_with_delimiter,
-    update_item_in_table,
+    update_item_in_table, PlaybookArtifacts, ResultsTableItem,
 };
 use async_recursion::async_recursion;
 use lamedh_runtime::Context;
@@ -21,7 +20,7 @@ const CONVERSION_TOKEN: &str = "!";
 /// are populated using the [Lambda environment variables](https://docs.aws.amazon.com/lambda/latest/dg/current-supported-versions.html)
 /// and the headers returned by the poll request to the Runtime APIs.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct SoclessLambdaEvent {
+pub struct SoclessLambdaInput {
     #[serde(rename = "State_Config")]
     state_config: StateConfig,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -40,7 +39,7 @@ pub struct SoclessLambdaEvent {
     other: HashMap<String, Value>,
 }
 
-impl SoclessLambdaEvent {
+impl SoclessLambdaInput {
     async fn resolve_state_config_parameters(&mut self, socless_context: &SoclessContext) {
         let current_state_config = self.clone().state_config;
 
@@ -59,15 +58,15 @@ impl SoclessLambdaEvent {
     }
 }
 
-impl From<Value> for SoclessLambdaEvent {
+impl From<Value> for SoclessLambdaInput {
     fn from(event: Value) -> Self {
-        let mut socless_event: SoclessLambdaEvent = match from_value((&event).to_owned()) {
+        let mut socless_event: SoclessLambdaInput = match from_value((&event).to_owned()) {
             Ok(correct_event) => correct_event,
             Err(_e) => {
                 println!(
                     "Event missing StateConfig, attempting to build Event as direct_invoke mode."
                 );
-                SoclessLambdaEvent {
+                SoclessLambdaInput {
                     state_config: StateConfig {
                         name: "direct_invoke".to_string(),
                         parameters: from_value(event)
@@ -80,14 +79,14 @@ impl From<Value> for SoclessLambdaEvent {
         };
 
         if let Some(token) = socless_event.task_token {
-            socless_event = SoclessLambdaEvent {
+            socless_event = SoclessLambdaInput {
                 task_token: Some(token),
                 ..from_value(
                     socless_event
                         .sfn_context
                         .expect("'sfn_context' not found in socless event with a 'task_token'"),
                 )
-                .expect("'sfn_context' object does not deserialize into a SoclessLambdaEvent type")
+                .expect("'sfn_context' object does not deserialize into a SoclessLambdaInput type")
             }
         }
 
@@ -137,7 +136,7 @@ pub struct SoclessContext {
     other: HashMap<String, Value>,
 }
 
-async fn build_socless_context(event: &SoclessLambdaEvent) -> SoclessContext {
+async fn build_socless_context(event: &SoclessLambdaInput) -> SoclessContext {
     let temp_event = event.clone();
     let is_testing = temp_event._testing.unwrap_or(false);
 
@@ -217,7 +216,6 @@ pub async fn resolve_reference(reference_path: &Value, root_obj: &SoclessContext
     } else if reference_path.is_string() {
         let ref_string = reference_path.as_str().unwrap();
 
-        // let (trimmed_ref, _conversion) = match ref_string.split_with_delimiter(CONVERSION_TOKEN) {
         let (trimmed_ref, _conversion) = match split_with_delimiter(ref_string, CONVERSION_TOKEN) {
             Some((trimmed_ref, _, conversion)) => (trimmed_ref.to_string(), Some(conversion)),
             None => (ref_string.to_string(), None),
@@ -304,8 +302,7 @@ pub async fn socless_bootstrap(
     handler: fn(Value) -> Value,
     include_event: bool,
 ) -> Value {
-    // let mut socless_event: SoclessLambdaEvent = build_socless_event_boilerplate(event);
-    let mut socless_event = SoclessLambdaEvent::from(event);
+    let mut socless_event = SoclessLambdaInput::from(event);
 
     let socless_context = build_socless_context(&socless_event).await;
 
@@ -338,7 +335,7 @@ pub async fn socless_bootstrap(
 
 /// Save the results of a State's execution to the Execution results table
 async fn save_state_results(
-    socless_event: &SoclessLambdaEvent,
+    socless_event: &SoclessLambdaInput,
     handler_result: &Value,
     socless_context: &SoclessContext,
 ) {
@@ -432,7 +429,7 @@ mod tests {
                         "firstname": "$.artifacts.event.details.firstname",
                         "lastname": "$.artifacts.event.details.lastname",
                         "middlename": "Malory",
-                        // "vault.txt": "vault:socless_vault_tests.txt",
+                        // "vault.txt": "vault:socless_vault_tests.txt",  // requires mocking s3 vault
                         // "vault.json": "vault:socless_vault_tests.json!json",
                         "acquaintances": [
                             {
@@ -465,7 +462,7 @@ mod tests {
     }
 
     #[allow(dead_code)]
-    fn build_mock_event_from_playbook() -> SoclessLambdaEvent {
+    fn build_mock_event_from_playbook() -> SoclessLambdaInput {
         let mock_event_data = json!({
             "execution_id": "98123-1234567",
             "artifacts": {
@@ -499,7 +496,7 @@ mod tests {
     }
 
     #[allow(dead_code)]
-    fn build_mock_event_with_references() -> SoclessLambdaEvent {
+    fn build_mock_event_with_references() -> SoclessLambdaInput {
         from_value(mock_event_value_boilerplate()).unwrap()
     }
 
@@ -510,7 +507,7 @@ mod tests {
             "channel_id": "C123458"
         });
 
-        SoclessLambdaEvent::from(mock_event_data);
+        SoclessLambdaInput::from(mock_event_data);
     }
 
     #[tokio::test]
@@ -593,7 +590,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_socless_boilerplate_with_complete_event_already_set_up() {
-        let event_with_state_config = SoclessLambdaEvent::from(mock_event_value_boilerplate());
+        let event_with_state_config = SoclessLambdaInput::from(mock_event_value_boilerplate());
         assert_eq!(
             to_value(event_with_state_config).unwrap(),
             mock_event_value_boilerplate()
@@ -603,7 +600,7 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_state_config_parameters() {
         let mock_root_obj: SoclessContext = build_mock_root_obj();
-        let mut event_with_state_config = SoclessLambdaEvent::from(mock_event_value_boilerplate());
+        let mut event_with_state_config = SoclessLambdaInput::from(mock_event_value_boilerplate());
 
         event_with_state_config
             .resolve_state_config_parameters(&mock_root_obj)
