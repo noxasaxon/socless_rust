@@ -12,12 +12,19 @@
 //! output directly to the next step.
 pub mod events;
 pub mod helpers;
+pub mod humaninteraction;
 pub mod integrations;
+pub mod models;
 pub mod utils;
 
 pub use helpers::{
     fetch_utf8_from_vault, get_dynamo_client, get_item_from_table, get_object_from_s3,
     get_s3_client, json_merge, put_item_in_table, split_with_delimiter, update_item_in_table,
 };
-pub use integrations::{socless_bootstrap, SoclessContext, SoclessLambdaEvent, StateConfig};
+pub use humaninteraction::{end_human_interaction, init_human_interaction};
+pub use integrations::{socless_bootstrap, SoclessContext, SoclessLambdaInput, StateConfig};
+pub use models::{
+    EventTableItem, PlaybookArtifacts, PlaybookInput, ResponsesTableItem, ResultsTableItem,
+    SoclessEvent,
+};
 pub use utils::{gen_datetimenow, gen_id};

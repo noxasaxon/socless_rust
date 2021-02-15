@@ -1,6 +1,4 @@
 // compare to https://github.com/twilio-labs/socless_python/blob/master/socless/events.py
-
-use chrono::Utc;
 use lamedh_http::Context;
 use md5;
 use rusoto_core::Region;
@@ -12,9 +10,12 @@ use serde_json::{json, Value};
 
 use std::collections::HashMap;
 use std::env;
-use uuid::Uuid;
 
-use crate::helpers::{get_item_from_table, put_item_in_table};
+use crate::{
+    gen_datetimenow, gen_id,
+    helpers::{get_item_from_table, put_item_in_table},
+    EventTableItem, PlaybookArtifacts, PlaybookInput, ResultsTableItem, SoclessEvent,
+};
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct SoclessEventBatch {
@@ -25,74 +26,6 @@ pub struct SoclessEventBatch {
     pub data_types: Option<HashMap<String, String>>,
     pub event_meta: Option<HashMap<String, String>>,
     pub dedup_keys: Option<Vec<String>>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub struct SoclessEvent {
-    pub id: String,
-    pub investigation_id: String,
-    pub status_: String,
-    pub is_duplicate: bool,
-    pub created_at: String,
-    pub event_type: String,
-    pub playbook: String,
-    pub details: HashMap<String, Value>, // single dict with unknown types
-    pub data_types: HashMap<String, String>,
-    pub event_meta: HashMap<String, String>,
-    pub dedup_keys: Vec<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub struct ResultsTableItem {
-    pub execution_id: String,
-    pub investigation_id: String,
-    pub datetime: String,
-    pub results: PlaybookInput,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct PlaybookInput {
-    pub artifacts: PlaybookArtifacts,
-    pub results: HashMap<String, Value>,
-    pub errors: HashMap<String, Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct PlaybookArtifacts {
-    pub event: EventTableItem,
-    pub execution_id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct EventTableItem {
-    // no dedup_keys
-    pub id: String,
-    pub investigation_id: String,
-    pub status_: String,
-    pub is_duplicate: bool,
-    pub created_at: String,
-    pub event_type: String,
-    pub playbook: String,
-    pub details: HashMap<String, Value>, // single dict with unknown types
-    pub data_types: HashMap<String, String>,
-    pub event_meta: HashMap<String, String>,
-}
-
-impl From<SoclessEvent> for EventTableItem {
-    fn from(event: SoclessEvent) -> Self {
-        EventTableItem {
-            id: event.id,
-            investigation_id: event.investigation_id,
-            status_: event.status_,
-            is_duplicate: event.is_duplicate,
-            created_at: event.created_at,
-            event_type: event.event_type,
-            playbook: event.playbook,
-            details: event.details,
-            data_types: event.data_types,
-            event_meta: event.event_meta,
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -115,7 +48,7 @@ pub async fn create_events(
     let playbook_arn = get_playbook_arn(playbook, &lambda_context);
 
     let events_table_name = std::env::var("SOCLESS_EVENTS_TABLE")
-    .expect("No env var found for SOCLESS_EVENTS_TABLE, please check serverless.yml");
+        .expect("No env var found for SOCLESS_EVENTS_TABLE, please check serverless.yml");
 
     let mut events_subset: Vec<EventTableItem> = vec![];
     for event in formatted_events {
@@ -199,6 +132,7 @@ async fn deduplicate(mut event: SoclessEvent) -> SoclessEvent {
     let dedup_hash = build_dedup_hash(&event);
 
     // get dedup_table item
+    ////! not implemented, TODO FIX
     let dedup_mapping: HashMap<String, Value> = HashMap::new();
     let possible_investigation_id = dedup_mapping.get("current_investigation_id");
 
@@ -308,36 +242,16 @@ fn get_playbook_arn(playbook_name: &str, lambda_context: &Context) -> String {
     let region = lambda_arn_split[3];
     let account_id = lambda_arn_split[4];
 
-    println!("account_id: {}", account_id);
-
     format!(
         "arn:aws:states:{}:{}:stateMachine:{}",
         region, account_id, playbook_name
     )
 }
 
-fn gen_datetimenow() -> String {
-    Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string()
-}
-
-fn gen_id() -> String {
-    Uuid::new_v4().to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use lamedh_http::lambda::Config;
-
-    #[test]
-    fn test_gen_id() {
-        assert_eq!(36, gen_id().len());
-    }
-
-    #[test]
-    fn test_gen_datetimenow() {
-        assert_eq!(27, gen_datetimenow().len());
-    }
 
     #[test]
     fn test_results_table_struct() {

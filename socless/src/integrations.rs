@@ -1,11 +1,11 @@
 /// Compare to https://github.com/twilio-labs/socless_python/blob/master/socless/integrations.py
 use crate::{
-    events::{PlaybookArtifacts, ResultsTableItem},
     fetch_utf8_from_vault, get_item_from_table, json_merge, split_with_delimiter,
-    update_item_in_table,
+    update_item_in_table, PlaybookArtifacts, ResultsTableItem,
 };
 use async_recursion::async_recursion;
 use lamedh_runtime::Context;
+use maplit::hashmap;
 use rusoto_dynamodb::{AttributeValue, UpdateItemInput};
 use serde::{Deserialize, Serialize};
 use serde_dynamo::{from_item, to_attribute_value};
@@ -21,7 +21,7 @@ const CONVERSION_TOKEN: &str = "!";
 /// are populated using the [Lambda environment variables](https://docs.aws.amazon.com/lambda/latest/dg/current-supported-versions.html)
 /// and the headers returned by the poll request to the Runtime APIs.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct SoclessLambdaEvent {
+pub struct SoclessLambdaInput {
     #[serde(rename = "State_Config")]
     state_config: StateConfig,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -40,7 +40,7 @@ pub struct SoclessLambdaEvent {
     other: HashMap<String, Value>,
 }
 
-impl SoclessLambdaEvent {
+impl SoclessLambdaInput {
     async fn resolve_state_config_parameters(&mut self, socless_context: &SoclessContext) {
         let current_state_config = self.clone().state_config;
 
@@ -59,15 +59,15 @@ impl SoclessLambdaEvent {
     }
 }
 
-impl From<Value> for SoclessLambdaEvent {
+impl From<Value> for SoclessLambdaInput {
     fn from(event: Value) -> Self {
-        let mut socless_event: SoclessLambdaEvent = match from_value((&event).to_owned()) {
+        let mut socless_event: SoclessLambdaInput = match from_value((&event).to_owned()) {
             Ok(correct_event) => correct_event,
             Err(_e) => {
                 println!(
                     "Event missing StateConfig, attempting to build Event as direct_invoke mode."
                 );
-                SoclessLambdaEvent {
+                SoclessLambdaInput {
                     state_config: StateConfig {
                         name: "direct_invoke".to_string(),
                         parameters: from_value(event)
@@ -80,14 +80,14 @@ impl From<Value> for SoclessLambdaEvent {
         };
 
         if let Some(token) = socless_event.task_token {
-            socless_event = SoclessLambdaEvent {
+            socless_event = SoclessLambdaInput {
                 task_token: Some(token),
                 ..from_value(
                     socless_event
                         .sfn_context
                         .expect("'sfn_context' not found in socless event with a 'task_token'"),
                 )
-                .expect("'sfn_context' object does not deserialize into a SoclessLambdaEvent type")
+                .expect("'sfn_context' object does not deserialize into a SoclessLambdaInput type")
             }
         }
 
@@ -122,22 +122,22 @@ pub struct StateConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SoclessContext {
     #[serde(skip_serializing_if = "Option::is_none")]
-    execution_id: Option<String>,
+    pub execution_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    artifacts: Option<HashMap<String, Value>>,
+    pub artifacts: Option<HashMap<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    results: Option<HashMap<String, Value>>,
+    pub results: Option<HashMap<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    errors: Option<HashMap<String, Value>>,
+    pub errors: Option<HashMap<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    task_token: Option<String>,
+    pub task_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    state_name: Option<String>,
+    pub state_name: Option<String>,
     #[serde(flatten)]
-    other: HashMap<String, Value>,
+    pub other: HashMap<String, Value>,
 }
 
-async fn build_socless_context(event: &SoclessLambdaEvent) -> SoclessContext {
+async fn build_socless_context(event: &SoclessLambdaInput) -> SoclessContext {
     let temp_event = event.clone();
     let is_testing = temp_event._testing.unwrap_or(false);
 
@@ -152,7 +152,7 @@ async fn build_socless_context(event: &SoclessLambdaEvent) -> SoclessContext {
                     &var("SOCLESS_RESULTS_TABLE").unwrap(),
                 )
                 .await
-                .unwrap(),
+                .expect("Execution ID not found in Results Table"),
             )
             .unwrap();
 
@@ -173,7 +173,7 @@ async fn build_socless_context(event: &SoclessLambdaEvent) -> SoclessContext {
                 );
             };
 
-            from_value(to_value(temp_ctx).unwrap()).unwrap()
+            from_value(temp_ctx).unwrap()
         }
     };
     socless_context
@@ -217,7 +217,6 @@ pub async fn resolve_reference(reference_path: &Value, root_obj: &SoclessContext
     } else if reference_path.is_string() {
         let ref_string = reference_path.as_str().unwrap();
 
-        // let (trimmed_ref, _conversion) = match ref_string.split_with_delimiter(CONVERSION_TOKEN) {
         let (trimmed_ref, _conversion) = match split_with_delimiter(ref_string, CONVERSION_TOKEN) {
             Some((trimmed_ref, _, conversion)) => (trimmed_ref.to_string(), Some(conversion)),
             None => (ref_string.to_string(), None),
@@ -304,8 +303,7 @@ pub async fn socless_bootstrap(
     handler: fn(Value) -> Value,
     include_event: bool,
 ) -> Value {
-    // let mut socless_event: SoclessLambdaEvent = build_socless_event_boilerplate(event);
-    let mut socless_event = SoclessLambdaEvent::from(event);
+    let mut socless_event = SoclessLambdaInput::from(event);
 
     let socless_context = build_socless_context(&socless_event).await;
 
@@ -331,62 +329,63 @@ pub async fn socless_bootstrap(
     }
 
     if !&socless_event._testing.unwrap_or_default() {
-        save_state_results(&socless_event, &handler_result, &socless_context).await;
+        save_state_results(
+            &socless_event.state_config.name,
+            &socless_event
+                .execution_id
+                .expect("No execution_id in non-testing event"),
+            &handler_result,
+            socless_context.errors,
+        )
+        .await;
     }
     return handler_result;
 }
 
 /// Save the results of a State's execution to the Execution results table
-async fn save_state_results(
-    socless_event: &SoclessLambdaEvent,
+pub async fn save_state_results(
+    state_config_name: &str,
+    execution_id: &str,
     handler_result: &Value,
-    socless_context: &SoclessContext,
+    // socless_context: &SoclessContext,
+    socless_context_errors: Option<HashMap<String, Value>>,
 ) {
-    let mut expression_attribute_names: HashMap<String, String> = HashMap::new();
-    let mut expression_attribute_values: HashMap<String, AttributeValue> = HashMap::new();
-
-    expression_attribute_values.insert(
-        ":r".to_owned(),
-        to_attribute_value(handler_result)
-            .expect("Unable to convert 'handler_result' to AttributeValue for PutItem"),
-    );
-
-    let errors: HashMap<String, Value> = socless_context.errors.clone().unwrap_or_default();
-    let error_expression = match errors.is_empty() {
-        true => "",
-        false => {
-            expression_attribute_values.insert(
-                ":e".to_owned(),
-                to_attribute_value(errors)
-                    .expect("Unable to convert 'errors' to AttributeValue for PutItem"),
-            );
-            ",#results.errors = :e"
-        }
+    let mut expression_attribute_values: HashMap<String, AttributeValue> = hashmap! {
+        ":r".to_owned() => to_attribute_value(handler_result)
+                            .expect("Unable to convert 'handler_result' to AttributeValue for PutItem"),
     };
 
-    let update_expression = format!(
-        "SET #results.#results.#name = :r, #results.#results.#last_results = :r {}",
-        error_expression
-    );
-
-    expression_attribute_names.insert("#name".to_string(), socless_event.state_config.name.clone());
-    expression_attribute_names.insert(
-        "#last_results".to_string(),
-        "_Last_Saved_Results".to_string(),
-    );
-
-    let mut key: HashMap<String, AttributeValue> = HashMap::new();
-    key.insert(
-        "execution_id".to_string(),
-        to_attribute_value(socless_event.execution_id.clone().unwrap()).unwrap(),
-    );
+    let error_expression = match socless_context_errors {
+        None => "",
+        Some(error_map) => {
+            if error_map.is_empty() {
+                ""
+            } else {
+                expression_attribute_values.insert(
+                    ":e".to_owned(),
+                    to_attribute_value(error_map)
+                        .expect("Unable to convert 'errors' to AttributeValue for PutItem"),
+                );
+                ",#results.errors = :e"
+            }
+        }
+    };
 
     let input = UpdateItemInput {
         table_name: var("SOCLESS_RESULTS_TABLE")
             .expect("No Environment Variable set for 'SOCLESS_RESULTS_TABLE'"),
-        key,
-        update_expression: Some(update_expression),
-        expression_attribute_names: Some(expression_attribute_names),
+        key: hashmap! {
+            "execution_id".to_string() =>
+            to_attribute_value(execution_id).unwrap(),
+        },
+        update_expression: Some(format!(
+            "SET #results.#results.#name = :r, #results.#results.#last_results = :r {}",
+            error_expression
+        )),
+        expression_attribute_names: Some(hashmap! {
+            "#name".to_string() => state_config_name.to_string(),
+            "#last_results".to_string() => "_Last_Saved_Results".to_string(),
+        }),
         expression_attribute_values: Some(expression_attribute_values),
         ..Default::default()
     };
@@ -432,7 +431,7 @@ mod tests {
                         "firstname": "$.artifacts.event.details.firstname",
                         "lastname": "$.artifacts.event.details.lastname",
                         "middlename": "Malory",
-                        // "vault.txt": "vault:socless_vault_tests.txt",
+                        // "vault.txt": "vault:socless_vault_tests.txt",  // requires mocking s3 vault
                         // "vault.json": "vault:socless_vault_tests.json!json",
                         "acquaintances": [
                             {
@@ -465,7 +464,7 @@ mod tests {
     }
 
     #[allow(dead_code)]
-    fn build_mock_event_from_playbook() -> SoclessLambdaEvent {
+    fn build_mock_event_from_playbook() -> SoclessLambdaInput {
         let mock_event_data = json!({
             "execution_id": "98123-1234567",
             "artifacts": {
@@ -499,7 +498,7 @@ mod tests {
     }
 
     #[allow(dead_code)]
-    fn build_mock_event_with_references() -> SoclessLambdaEvent {
+    fn build_mock_event_with_references() -> SoclessLambdaInput {
         from_value(mock_event_value_boilerplate()).unwrap()
     }
 
@@ -510,7 +509,7 @@ mod tests {
             "channel_id": "C123458"
         });
 
-        SoclessLambdaEvent::from(mock_event_data);
+        SoclessLambdaInput::from(mock_event_data);
     }
 
     #[tokio::test]
@@ -593,7 +592,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_build_socless_boilerplate_with_complete_event_already_set_up() {
-        let event_with_state_config = SoclessLambdaEvent::from(mock_event_value_boilerplate());
+        let event_with_state_config = SoclessLambdaInput::from(mock_event_value_boilerplate());
         assert_eq!(
             to_value(event_with_state_config).unwrap(),
             mock_event_value_boilerplate()
@@ -603,7 +602,7 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_state_config_parameters() {
         let mock_root_obj: SoclessContext = build_mock_root_obj();
-        let mut event_with_state_config = SoclessLambdaEvent::from(mock_event_value_boilerplate());
+        let mut event_with_state_config = SoclessLambdaInput::from(mock_event_value_boilerplate());
 
         event_with_state_config
             .resolve_state_config_parameters(&mock_root_obj)
