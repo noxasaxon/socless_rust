@@ -20,3 +20,18 @@ pub fn gen_datetimenow() -> String {
 pub fn gen_id() -> String {
     Uuid::new_v4().to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_gen_id() {
+        assert_eq!(36, gen_id().len());
+    }
+
+    #[test]
+    fn test_gen_datetimenow() {
+        assert_eq!(27, gen_datetimenow().len());
+    }
+}

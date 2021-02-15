@@ -4,6 +4,7 @@ use rusoto_dynamodb::{
     PutItemOutput, UpdateItemError, UpdateItemInput, UpdateItemOutput,
 };
 use rusoto_s3::{GetObjectError, GetObjectOutput, GetObjectRequest, S3Client, S3};
+use rusoto_stepfunctions::StepFunctionsClient;
 
 use serde_json::Value;
 
@@ -33,11 +34,26 @@ pub async fn get_item_from_table(
             ..Default::default()
         })
         .await
-        .unwrap();
+        .expect(&format!(
+            "Error in get_item of table: {} for key= {{ {} : {} }}",
+            table_name, primary_key_name, primary_key_value
+        ));
 
     get_item_response.item
 }
 
+///
+///
+/// # Example
+/// ```ignore
+/// put_item_in_table(PutItemInput {
+///     item: to_item(event_table_input.clone()).unwrap(),
+///     table_name: events_table_name.to_owned(),
+///     ..Default::default()
+/// })
+/// .await
+/// .unwrap();
+/// ```
 pub async fn put_item_in_table(
     item: PutItemInput,
 ) -> Result<PutItemOutput, RusotoError<PutItemError>> {
@@ -55,6 +71,11 @@ pub async fn update_item_in_table(
 pub fn get_dynamo_client() -> DynamoDbClient {
     ////! FIX: setup with onceCell global state
     DynamoDbClient::new(Region::default())
+}
+
+pub fn get_step_functions_client() -> StepFunctionsClient {
+    ////! FIX: setup with onceCell global state
+    StepFunctionsClient::new(Region::default())
 }
 
 /// Combine two serde Value objects

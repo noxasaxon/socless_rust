@@ -1,6 +1,4 @@
 // compare to https://github.com/twilio-labs/socless_python/blob/master/socless/events.py
-
-use chrono::Utc;
 use lamedh_http::Context;
 use md5;
 use rusoto_core::Region;
@@ -12,9 +10,9 @@ use serde_json::{json, Value};
 
 use std::collections::HashMap;
 use std::env;
-use uuid::Uuid;
 
 use crate::{
+    gen_datetimenow, gen_id,
     helpers::{get_item_from_table, put_item_in_table},
     EventTableItem, PlaybookArtifacts, PlaybookInput, ResultsTableItem, SoclessEvent,
 };
@@ -134,6 +132,7 @@ async fn deduplicate(mut event: SoclessEvent) -> SoclessEvent {
     let dedup_hash = build_dedup_hash(&event);
 
     // get dedup_table item
+    ////! not implemented, TODO FIX
     let dedup_mapping: HashMap<String, Value> = HashMap::new();
     let possible_investigation_id = dedup_mapping.get("current_investigation_id");
 
@@ -243,36 +242,16 @@ fn get_playbook_arn(playbook_name: &str, lambda_context: &Context) -> String {
     let region = lambda_arn_split[3];
     let account_id = lambda_arn_split[4];
 
-    println!("account_id: {}", account_id);
-
     format!(
         "arn:aws:states:{}:{}:stateMachine:{}",
         region, account_id, playbook_name
     )
 }
 
-fn gen_datetimenow() -> String {
-    Utc::now().format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string()
-}
-
-fn gen_id() -> String {
-    Uuid::new_v4().to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use lamedh_http::lambda::Config;
-
-    #[test]
-    fn test_gen_id() {
-        assert_eq!(36, gen_id().len());
-    }
-
-    #[test]
-    fn test_gen_datetimenow() {
-        assert_eq!(27, gen_datetimenow().len());
-    }
 
     #[test]
     fn test_results_table_struct() {

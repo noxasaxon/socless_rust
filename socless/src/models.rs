@@ -72,12 +72,12 @@ impl From<SoclessEvent> for EventTableItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ResponsesTableItem {
-    message_id: String,
-    datetime: String,
-    message: String,
-    fulfilled: bool,
-    execution_id: String,
-    investigation_id: String,
-    receiver: String,
-    await_token: String,
+    pub message_id: String,
+    pub datetime: String,
+    pub message: String,
+    pub fulfilled: bool,
+    pub execution_id: String,
+    pub investigation_id: String,
+    pub receiver: String,
+    pub await_token: String,
 }
