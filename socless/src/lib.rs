@@ -17,6 +17,7 @@ pub mod integrations;
 pub mod models;
 pub mod utils;
 
+pub use events::{create_events, SoclessEventBatch};
 pub use helpers::{
     fetch_utf8_from_vault, get_dynamo_client, get_item_from_table, get_object_from_s3,
     get_s3_client, json_merge, put_item_in_table, split_with_delimiter, update_item_in_table,
