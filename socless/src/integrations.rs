@@ -10,6 +10,7 @@ use rusoto_dynamodb::{AttributeValue, UpdateItemInput};
 use serde::{Deserialize, Serialize};
 use serde_dynamo::{from_item, to_attribute_value};
 use serde_json::{from_value, json, to_value, Value};
+use std::future::Future;
 use std::{collections::HashMap, env::var};
 
 const VAULT_TOKEN: &str = "vault:";
@@ -297,12 +298,15 @@ async fn resolve_json_path(reference_path: &str, root_obj: &SoclessContext) -> V
 /// ```ignore
 /// use socless::socless_bootstrap;
 /// ```
-pub async fn socless_bootstrap(
+pub async fn socless_bootstrap<Fut>(
     event: Value,
     _context: Context,
-    handler: fn(Value) -> Value,
+    handler: fn(Value) -> Fut,
     include_event: bool,
-) -> Value {
+) -> Value
+where
+    Fut: Future<Output = Value>,
+{
     let mut socless_event = SoclessLambdaInput::from(event);
 
     let socless_context = build_socless_context(&socless_event).await;
@@ -322,7 +326,8 @@ pub async fn socless_bootstrap(
 
     let handler_result = handler(
         to_value(&event_params).expect("Unable to serialize event_params hashmap to serde Value."),
-    );
+    )
+    .await;
 
     if !handler_result.is_object() {
         panic!("output returned from the integration handler is not a json map object.")
