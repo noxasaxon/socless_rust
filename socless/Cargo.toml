@@ -12,10 +12,10 @@ lamedh_runtime = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_dynamo = "2.0"
-rusoto_core = {version = "0.46", default_features = false, features = ["rustls"]}
-rusoto_s3 = {version = "0.46", default_features = false, features = ["rustls"]}
-rusoto_dynamodb = {version = "0.46", default_features = false, features=[ "deserialize_structs", "rustls"]}
-rusoto_stepfunctions = {version="0.46", default_features = false, features = ["rustls"]}
+rusoto_core = {version = "0.46", default_features = false}
+rusoto_s3 = {version = "0.46", default_features = false}
+rusoto_dynamodb = {version = "0.46", default_features = false, features=["deserialize_structs"]}
+rusoto_stepfunctions = {version="0.46", default_features = false}
 md5 = { version = "0.7" }
 uuid = { version = "0.8", features = ["v4"] }
 chrono = "0.4.19"
@@ -24,7 +24,11 @@ futures = "0.3"
 async-recursion = "0.3"
 tokio = { version = "1.2", features = ["macros"] }
 maplit = "1.0.2"
-# hyper = { features = ["http2"] }
+hyper = { version = "0.14", features = ["http2"] } # needed for rustls
 
 [dev-dependencies]
 tokio-test = "0.4"
+
+[features]
+default = ["rusoto_core/default", "rusoto_s3/default", "rusoto_dynamodb/default", "rusoto_stepfunctions/default"]
+rustls = ["rusoto_core/rustls", "rusoto_s3/rustls", "rusoto_dynamodb/rustls", "rusoto_stepfunctions/rustls"]
