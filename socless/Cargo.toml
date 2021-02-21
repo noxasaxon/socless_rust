@@ -24,11 +24,11 @@ futures = "0.3"
 async-recursion = "0.3"
 tokio = { version = "1.2", features = ["macros"] }
 maplit = "1.0.2"
-hyper = { version = "0.14", features = ["http2"] } # needed for rustls
+hyper = { version = "0.14", features = ["http2"], optional = true } # needed for rustls
 
 [dev-dependencies]
 tokio-test = "0.4"
 
 [features]
-default = ["rusoto_core/default", "rusoto_s3/default", "rusoto_dynamodb/default", "rusoto_stepfunctions/default"]
-rustls = ["rusoto_core/rustls", "rusoto_s3/rustls", "rusoto_dynamodb/rustls", "rusoto_stepfunctions/rustls"]
+# default = ["rusoto_core/default", "rusoto_s3/default", "rusoto_dynamodb/default", "rusoto_stepfunctions/default"]
+rustls = ["rusoto_core/rustls", "rusoto_s3/rustls", "rusoto_dynamodb/rustls", "rusoto_stepfunctions/rustls", "hyper/http2"]
