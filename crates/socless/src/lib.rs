@@ -10,6 +10,7 @@
 //!
 //! SOCless allows users to write complex State Machines that can do more than pass a Step's
 //! output directly to the next step.
+pub mod clients;
 pub mod events;
 pub mod helpers;
 pub mod humaninteraction;

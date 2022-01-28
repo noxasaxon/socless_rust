@@ -1,11 +1,10 @@
 // compare to https://github.com/twilio-labs/socless_python/blob/master/socless/events.py
-use lamedh_http::Context;
+use lambda_http::Context;
 use md5;
-use rusoto_core::Region;
-use rusoto_dynamodb::PutItemInput;
-use rusoto_stepfunctions::{StartExecutionInput, StepFunctions, StepFunctionsClient};
+// use rusoto_core::Region;
+// use rusoto_dynamodb::PutItemInput;
+// use rusoto_stepfunctions::{StartExecutionInput, StepFunctions, StepFunctionsClient};
 use serde::{Deserialize, Serialize};
-use serde_dynamo::{from_item, to_item};
 use serde_json::{json, Value};
 
 use std::collections::HashMap;
@@ -16,6 +15,14 @@ use crate::{
     helpers::{get_item_from_table, put_item_in_table},
     EventTableItem, PlaybookArtifacts, PlaybookInput, ResultsTableItem, SoclessEvent,
 };
+
+use aws_sdk_dynamodb::{
+    input::PutItemInput,
+    model::{AttributeValue, DeleteRequest, KeysAndAttributes, PutRequest, WriteRequest},
+};
+use aws_sdk_dynamodb::{Client, Config, Endpoint, Region};
+use aws_types::Credentials;
+use serde_dynamo::aws_sdk_dynamodb_0_4::{from_item, from_items, to_attribute_value, to_item};
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct SoclessEventBatch {
@@ -36,7 +43,7 @@ pub struct ExecutionStatus {
 
 pub async fn create_events(
     event_batch: SoclessEventBatch,
-    lambda_context: lamedh_http::Context,
+    lambda_context: lambda_http::Context,
 ) -> Vec<ExecutionStatus> {
     println!("lambda context: {:?}", lambda_context);
     let mut execution_statuses: Vec<ExecutionStatus> = vec![];
@@ -56,11 +63,13 @@ pub async fn create_events(
 
         let event_table_input = EventTableItem::from(deduplicated);
 
-        let input = PutItemInput {
-            table_name: events_table_name.to_owned(),
-            item: to_item(event_table_input.clone()).unwrap(),
-            ..PutItemInput::default()
-        };
+        // let input = PutItemInput {
+        //     table_name: events_table_name.to_owned(),
+        //     item: to_item(event_table_input.clone()).unwrap(),
+        //     ..PutItemInput::default()
+        // };
+
+        let input = PutItemInput::builder().table_name(events_table_name).item(k, v)
 
         put_item_in_table(input).await.unwrap();
 
@@ -216,6 +225,8 @@ async fn execute_playbook(creation_event: EventTableItem, playbook_arn: &str) ->
         trace_header: None,
     };
 
+    let sf_client = aws_config::load_from_env().await;
+
     let sf_client = StepFunctionsClient::new(Region::default());
     let start_exec_response = sf_client.start_execution(step_functions_input).await;
 
@@ -251,7 +262,8 @@ fn get_playbook_arn(playbook_name: &str, lambda_context: &Context) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lamedh_http::lambda::Config;
+    // use lamedh_http::lambda::Config;
+    use lambda_http::lambda_runtime::Config;
 
     #[test]
     fn test_results_table_struct() {

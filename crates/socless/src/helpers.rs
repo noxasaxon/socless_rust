@@ -1,45 +1,43 @@
-use rusoto_core::{Region, RusotoError};
-use rusoto_dynamodb::{
-    AttributeValue, DynamoDb, DynamoDbClient, GetItemInput, PutItemError, PutItemInput,
-    PutItemOutput, UpdateItemError, UpdateItemInput, UpdateItemOutput,
+use aws_sdk_dynamodb::{
+    input::PutItemInput,
+    model::{AttributeValue, DeleteRequest, KeysAndAttributes, PutRequest, WriteRequest},
 };
-use rusoto_s3::{GetObjectError, GetObjectOutput, GetObjectRequest, S3Client, S3};
-use rusoto_stepfunctions::StepFunctionsClient;
-
+use serde_dynamo::aws_sdk_dynamodb_0_4::{from_item, from_items, to_attribute_value, to_item};
 use serde_json::Value;
-
-use futures::stream::TryStreamExt;
 use std::{collections::HashMap, env::var};
+
+use crate::clients::get_or_init_dynamo;
 
 pub async fn get_item_from_table(
     primary_key_name: &str,
     primary_key_value: &str,
     table_name: &str,
 ) -> Option<HashMap<String, AttributeValue>> {
-    let client = get_dynamo_client();
+    let client = get_or_init_dynamo().await;
 
-    let mut pkey = HashMap::new();
-    pkey.insert(
-        primary_key_name.to_string(),
-        AttributeValue {
-            s: Some(primary_key_value.to_string()),
-            ..Default::default()
-        },
-    );
-
-    let get_item_response = client
-        .get_item(GetItemInput {
-            key: pkey,
-            table_name: table_name.to_string(),
-            ..Default::default()
-        })
+    let result = client
+        .get_item()
+        .key(
+            primary_key_name,
+            to_attribute_value(primary_key_value).unwrap(),
+        )
+        .send()
         .await
         .expect(&format!(
             "Error in get_item of table: {} for key= {{ {} : {} }}",
             table_name, primary_key_name, primary_key_value
         ));
 
-    get_item_response.item
+    result.item
+
+    // let mut pkey = HashMap::new();
+    // pkey.insert(
+    //     primary_key_name.to_string(),
+    //     AttributeValue {
+    //         s: Some(primary_key_value.to_string()),
+    //         ..Default::default()
+    //     },
+    // );
 }
 
 ///
@@ -66,16 +64,6 @@ pub async fn update_item_in_table(
 ) -> Result<UpdateItemOutput, RusotoError<UpdateItemError>> {
     let client = get_dynamo_client();
     client.update_item(item).await
-}
-
-pub fn get_dynamo_client() -> DynamoDbClient {
-    ////! FIX: setup with onceCell global state
-    DynamoDbClient::new(Region::default())
-}
-
-pub fn get_step_functions_client() -> StepFunctionsClient {
-    ////! FIX: setup with onceCell global state
-    StepFunctionsClient::new(Region::default())
 }
 
 /// Combine two serde Value objects
