@@ -1,12 +1,10 @@
-use aws_sdk_dynamodb::{
-    input::PutItemInput,
-    model::{AttributeValue, DeleteRequest, KeysAndAttributes, PutRequest, WriteRequest},
-};
+use aws_sdk_dynamodb::model::AttributeValue;
+use aws_sdk_s3::{error::GetObjectError, output::GetObjectOutput};
 use serde_dynamo::aws_sdk_dynamodb_0_4::{from_item, from_items, to_attribute_value, to_item};
 use serde_json::Value;
 use std::{collections::HashMap, env::var};
 
-use crate::clients::get_or_init_dynamo;
+use crate::clients::{get_or_init_dynamo, get_or_init_s3};
 
 pub async fn get_item_from_table(
     primary_key_name: &str,
@@ -40,31 +38,31 @@ pub async fn get_item_from_table(
     // );
 }
 
-///
-///
-/// # Example
-/// ```ignore
-/// put_item_in_table(PutItemInput {
-///     item: to_item(event_table_input.clone()).unwrap(),
-///     table_name: events_table_name.to_owned(),
-///     ..Default::default()
-/// })
-/// .await
-/// .unwrap();
-/// ```
-pub async fn put_item_in_table(
-    item: PutItemInput,
-) -> Result<PutItemOutput, RusotoError<PutItemError>> {
-    let client = get_dynamo_client();
-    client.put_item(item).await
-}
+// ///
+// ///
+// /// # Example
+// /// ```ignore
+// /// put_item_in_table(PutItemInput {
+// ///     item: to_item(event_table_input.clone()).unwrap(),
+// ///     table_name: events_table_name.to_owned(),
+// ///     ..Default::default()
+// /// })
+// /// .await
+// /// .unwrap();
+// /// ```
+// pub async fn put_item_in_table(
+//     item: PutItemInput,
+// ) -> Result<PutItemOutput, RusotoError<PutItemError>> {
+//     let client = get_dynamo_client();
+//     client.put_item(item).await
+// }
 
-pub async fn update_item_in_table(
-    item: UpdateItemInput,
-) -> Result<UpdateItemOutput, RusotoError<UpdateItemError>> {
-    let client = get_dynamo_client();
-    client.update_item(item).await
-}
+// pub async fn update_item_in_table(
+//     item: UpdateItemInput,
+// ) -> Result<UpdateItemOutput, RusotoError<UpdateItemError>> {
+//     let client = get_dynamo_client();
+//     client.update_item(item).await
+// }
 
 /// Combine two serde Value objects
 /// # Example
@@ -93,22 +91,17 @@ pub fn json_merge(a: &mut Value, b: Value) {
     *a = b;
 }
 
-pub fn get_s3_client() -> S3Client {
-    ////! FIX: setup with onceCell global state
-    S3Client::new(Region::default())
-}
-
 pub async fn get_object_from_s3(
     key: &str,
     bucket_name: &str,
-) -> Result<GetObjectOutput, RusotoError<GetObjectError>> {
-    let client = get_s3_client();
-    let input = GetObjectRequest {
-        bucket: bucket_name.to_owned(),
-        key: key.to_owned(),
-        ..Default::default()
-    };
-    client.get_object(input).await
+) -> Result<GetObjectOutput, aws_sdk_s3::SdkError<GetObjectError>> {
+    get_or_init_s3()
+        .await
+        .get_object()
+        .bucket(bucket_name)
+        .key(key)
+        .send()
+        .await
 }
 
 pub async fn fetch_utf8_from_vault(key: &str) -> String {
@@ -118,15 +111,9 @@ pub async fn fetch_utf8_from_vault(key: &str) -> String {
     let object_result = get_object_from_s3(key, &socless_vault_bucket_name).await;
     let object = object_result.expect(&format!("No object found for key: {}", key));
 
-    let body = object.body.expect(&format!("No body in object: {}", key));
+    let body_as_bytes = object.body.collect().await.unwrap().into_bytes();
 
-    let body = body
-        .map_ok(|b| b.to_vec())
-        .try_concat()
-        .await
-        .expect("Unable to convert ByteStream after S3 get_object");
-
-    String::from_utf8(body).expect("S3 file is not valid utf8")
+    String::from_utf8(body_as_bytes.to_vec()).expect("S3 file is not valid utf8")
 }
 
 /// Search string for a given pattern, return a Tuple of (before_pattern, pattern, after_pattern)
