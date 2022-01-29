@@ -507,7 +507,7 @@ mod tests {
             "channel_id": "C123458"
         });
 
-        let test = SoclessLambdaInput::from(mock_event_data);
+        let _test = SoclessLambdaInput::from(mock_event_data);
     }
 
     #[tokio::test]
