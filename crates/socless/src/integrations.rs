@@ -1,12 +1,12 @@
+use crate::clients::get_or_init_dynamo;
 /// Compare to https://github.com/twilio-labs/socless_python/blob/master/socless/integrations.py
 use crate::{
     fetch_utf8_from_vault, get_item_from_table, json_merge, split_with_delimiter,
-    update_item_in_table, PlaybookArtifacts, ResultsTableItem,
+    PlaybookArtifacts, ResultsTableItem,
 };
 use async_recursion::async_recursion;
-use lamedh_runtime::Context;
+use lambda_runtime::Context;
 use maplit::hashmap;
-use rusoto_dynamodb::{AttributeValue, UpdateItemInput};
 use serde::{Deserialize, Serialize};
 use serde_dynamo::{from_item, to_attribute_value};
 use serde_json::{from_value, json, to_value, Value};
@@ -355,47 +355,39 @@ pub async fn save_state_results(
     // socless_context: &SoclessContext,
     socless_context_errors: Option<HashMap<String, Value>>,
 ) {
-    let mut expression_attribute_values: HashMap<String, AttributeValue> = hashmap! {
-        ":r".to_owned() => to_attribute_value(handler_result)
-                            .expect("Unable to convert 'handler_result' to AttributeValue for PutItem"),
-    };
+    let mut update_item = get_or_init_dynamo()
+        .await
+        .update_item()
+        .table_name(
+            var("SOCLESS_RESULTS_TABLE")
+                .expect("No Environment Variable set for 'SOCLESS_RESULTS_TABLE'"),
+        )
+        .key("execution_id", to_attribute_value(execution_id).unwrap())
+        .expression_attribute_names("#name", state_config_name)
+        .expression_attribute_names("#last_results", "_Last_Saved_Results")
+        .expression_attribute_values(
+            ":r",
+            to_attribute_value(handler_result)
+                .expect("Unable to convert 'handler_result' to AttributeValue for PutItem"),
+        );
 
-    let error_expression = match socless_context_errors {
-        None => "",
-        Some(error_map) => {
-            if error_map.is_empty() {
-                ""
-            } else {
-                expression_attribute_values.insert(
-                    ":e".to_owned(),
-                    to_attribute_value(error_map)
-                        .expect("Unable to convert 'errors' to AttributeValue for PutItem"),
-                );
-                ",#results.errors = :e"
-            }
-        }
+    update_item = if let Some(context_errors_map) = socless_context_errors {
+        update_item
+            .expression_attribute_values(
+                ":e",
+                to_attribute_value(context_errors_map)
+                    .expect("Unable to convert 'errors' to AttributeValue for PutItem"),
+            )
+            .update_expression(
+                "SET #results.#results.#name = :r, #results.#results.#last_results = :r ,#results.errors = :e",
+            )
+    } else {
+        update_item.update_expression(
+            "SET #results.#results.#name = :r, #results.#results.#last_results = :r ",
+        )
     };
-
-    let input = UpdateItemInput {
-        table_name: var("SOCLESS_RESULTS_TABLE")
-            .expect("No Environment Variable set for 'SOCLESS_RESULTS_TABLE'"),
-        key: hashmap! {
-            "execution_id".to_string() =>
-            to_attribute_value(execution_id).unwrap(),
-        },
-        update_expression: Some(format!(
-            "SET #results.#results.#name = :r, #results.#results.#last_results = :r {}",
-            error_expression
-        )),
-        expression_attribute_names: Some(hashmap! {
-            "#name".to_string() => state_config_name.to_string(),
-            "#last_results".to_string() => "_Last_Saved_Results".to_string(),
-        }),
-        expression_attribute_values: Some(expression_attribute_values),
-        ..Default::default()
-    };
-
-    update_item_in_table(input)
+    update_item
+        .send()
         .await
         .expect("Unable to save result to Results Table");
 }
