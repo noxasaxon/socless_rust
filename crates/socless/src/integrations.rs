@@ -1,8 +1,7 @@
 use crate::clients::get_or_init_dynamo;
-/// Compare to https://github.com/twilio-labs/socless_python/blob/master/socless/integrations.py
+use crate::utils::get_item_from_table;
 use crate::{
-    fetch_utf8_from_vault, get_item_from_table, json_merge, split_with_delimiter,
-    PlaybookArtifacts, ResultsTableItem,
+    fetch_utf8_from_vault, json_merge, split_with_delimiter, PlaybookArtifacts, ResultsTableItem,
 };
 use async_recursion::async_recursion;
 use lambda_runtime::Context;

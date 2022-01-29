@@ -1,43 +1,7 @@
-use crate::clients::{get_or_init_dynamo, get_or_init_s3};
-use aws_sdk_dynamodb::model::AttributeValue;
+use crate::clients::get_or_init_s3;
 use aws_sdk_s3::{error::GetObjectError, output::GetObjectOutput};
-use serde_dynamo::aws_sdk_dynamodb_0_4::to_attribute_value;
 use serde_json::Value;
-use std::{collections::HashMap, env::var};
-
-pub async fn get_item_from_table(
-    primary_key_name: &str,
-    primary_key_value: &str,
-    table_name: &str,
-) -> Option<HashMap<String, AttributeValue>> {
-    let client = get_or_init_dynamo().await;
-
-    let result = client
-        .get_item()
-        .key(
-            primary_key_name,
-            to_attribute_value(primary_key_value).unwrap(),
-        )
-        .send()
-        .await
-        .unwrap_or_else(|_| {
-            panic!(
-                "Error in get_item of table: {} for key= {{ {} : {} }}",
-                table_name, primary_key_name, primary_key_value
-            )
-        });
-
-    result.item
-
-    // let mut pkey = HashMap::new();
-    // pkey.insert(
-    //     primary_key_name.to_string(),
-    //     AttributeValue {
-    //         s: Some(primary_key_value.to_string()),
-    //         ..Default::default()
-    //     },
-    // );
-}
+use std::env::var;
 
 // ///
 // ///

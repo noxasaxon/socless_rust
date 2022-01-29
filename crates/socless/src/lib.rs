@@ -19,14 +19,11 @@ pub mod models;
 pub mod utils;
 
 pub use events::{create_events, SoclessEventBatch};
-pub use helpers::{
-    fetch_utf8_from_vault, get_item_from_table, get_object_from_s3, json_merge,
-    split_with_delimiter,
-};
+pub use helpers::{fetch_utf8_from_vault, get_object_from_s3, json_merge, split_with_delimiter};
 pub use humaninteraction::{end_human_interaction, init_human_interaction};
 pub use integrations::{socless_bootstrap, SoclessContext, SoclessLambdaInput, StateConfig};
 pub use models::{
     EventTableItem, PlaybookArtifacts, PlaybookInput, ResponsesTableItem, ResultsTableItem,
     SoclessEvent,
 };
-pub use utils::{gen_datetimenow, gen_id};
+pub use utils::{gen_datetimenow, gen_id, get_item_from_table};

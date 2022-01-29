@@ -1,9 +1,8 @@
 // compare to https://github.com/twilio-labs/socless_python/blob/master/socless/events.py
 use crate::{
     clients::{get_or_init_dynamo, get_or_init_sfn},
-    gen_datetimenow, gen_id,
-    helpers::get_item_from_table,
-    EventTableItem, PlaybookArtifacts, PlaybookInput, ResultsTableItem, SoclessEvent,
+    gen_datetimenow, gen_id, get_item_from_table, EventTableItem, PlaybookArtifacts, PlaybookInput,
+    ResultsTableItem, SoclessEvent,
 };
 use lambda_http::Context;
 use md5;
