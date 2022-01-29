@@ -1,3 +1,4 @@
+use aws_sdk_sfn::input::StartExecutionInput;
 // compare to https://github.com/twilio-labs/socless_python/blob/master/socless/events.py
 use lambda_http::Context;
 use md5;
@@ -11,8 +12,9 @@ use std::collections::HashMap;
 use std::env;
 
 use crate::{
+    clients::{get_or_init_dynamo, get_or_init_sfn},
     gen_datetimenow, gen_id,
-    helpers::{get_item_from_table, put_item_in_table},
+    helpers::get_item_from_table,
     EventTableItem, PlaybookArtifacts, PlaybookInput, ResultsTableItem, SoclessEvent,
 };
 
@@ -20,8 +22,6 @@ use aws_sdk_dynamodb::{
     input::PutItemInput,
     model::{AttributeValue, DeleteRequest, KeysAndAttributes, PutRequest, WriteRequest},
 };
-use aws_sdk_dynamodb::{Client, Config, Endpoint, Region};
-use aws_types::Credentials;
 use serde_dynamo::aws_sdk_dynamodb_0_4::{from_item, from_items, to_attribute_value, to_item};
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -63,15 +63,16 @@ pub async fn create_events(
 
         let event_table_input = EventTableItem::from(deduplicated);
 
-        // let input = PutItemInput {
-        //     table_name: events_table_name.to_owned(),
-        //     item: to_item(event_table_input.clone()).unwrap(),
-        //     ..PutItemInput::default()
-        // };
-
-        let input = PutItemInput::builder().table_name(events_table_name).item(k, v)
-
-        put_item_in_table(input).await.unwrap();
+        let result = get_or_init_dynamo()
+            .await
+            .put_item()
+            .table_name(&events_table_name)
+            .set_item(Some(
+                to_item(&event_table_input).expect("unable to convert to item"),
+            ))
+            .send()
+            .await
+            .unwrap();
 
         events_subset.push(event_table_input);
     }
@@ -205,30 +206,33 @@ async fn execute_playbook(creation_event: EventTableItem, playbook_arn: &str) ->
 
     let results_table_name =
         env::var("SOCLESS_RESULTS_TABLE").expect("SOCLESS_RESULTS_TABLE not set in env!");
-    let table_input = to_item(results_table_input).unwrap();
 
-    put_item_in_table(PutItemInput {
-        item: table_input,
-        table_name: results_table_name,
-        ..Default::default()
-    })
-    .await
-    .unwrap();
+    let result = get_or_init_dynamo()
+        .await
+        .put_item()
+        .table_name(&results_table_name)
+        .set_item(Some(
+            to_item(&results_table_input).expect("unable to convert to item"),
+        ))
+        .send()
+        .await
+        .unwrap();
 
-    let step_functions_input = StartExecutionInput {
-        name: Some(execution_id.clone()),
-        state_machine_arn: playbook_arn.to_owned(),
-        input: Some(
+    let start_exec_response = get_or_init_sfn()
+        .await
+        .start_execution()
+        .name(&execution_id)
+        .state_machine_arn(playbook_arn)
+        .input(
             json!({"execution_id": execution_id, "artifacts": playbook_input.artifacts})
                 .to_string(),
-        ),
-        trace_header: None,
-    };
+        )
+        .send()
+        .await;
 
-    let sf_client = aws_config::load_from_env().await;
+    // get_or_init_sfn().await.start_execution().input(
 
-    let sf_client = StepFunctionsClient::new(Region::default());
-    let start_exec_response = sf_client.start_execution(step_functions_input).await;
+    // );
 
     return match start_exec_response {
         Ok(start_exec_output) => ExecutionStatus {
