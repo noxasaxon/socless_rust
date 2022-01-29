@@ -1,21 +1,17 @@
 // compare to https://github.com/twilio-labs/socless_python/blob/master/socless/events.py
-use lamedh_http::Context;
-use md5;
-use rusoto_core::Region;
-use rusoto_dynamodb::PutItemInput;
-use rusoto_stepfunctions::{StartExecutionInput, StepFunctions, StepFunctionsClient};
-use serde::{Deserialize, Serialize};
-use serde_dynamo::{from_item, to_item};
-use serde_json::{json, Value};
-
-use std::collections::HashMap;
-use std::env;
-
 use crate::{
+    clients::{get_or_init_dynamo, get_or_init_sfn},
     gen_datetimenow, gen_id,
-    helpers::{get_item_from_table, put_item_in_table},
+    helpers::get_item_from_table,
     EventTableItem, PlaybookArtifacts, PlaybookInput, ResultsTableItem, SoclessEvent,
 };
+use lambda_http::Context;
+use md5;
+use serde::{Deserialize, Serialize};
+use serde_dynamo::aws_sdk_dynamodb_0_4::{from_item, to_item};
+use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::env;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct SoclessEventBatch {
@@ -36,7 +32,7 @@ pub struct ExecutionStatus {
 
 pub async fn create_events(
     event_batch: SoclessEventBatch,
-    lambda_context: lamedh_http::Context,
+    lambda_context: lambda_http::Context,
 ) -> Vec<ExecutionStatus> {
     println!("lambda context: {:?}", lambda_context);
     let mut execution_statuses: Vec<ExecutionStatus> = vec![];
@@ -56,13 +52,16 @@ pub async fn create_events(
 
         let event_table_input = EventTableItem::from(deduplicated);
 
-        let input = PutItemInput {
-            table_name: events_table_name.to_owned(),
-            item: to_item(event_table_input.clone()).unwrap(),
-            ..PutItemInput::default()
-        };
-
-        put_item_in_table(input).await.unwrap();
+        let _result = get_or_init_dynamo()
+            .await
+            .put_item()
+            .table_name(&events_table_name)
+            .set_item(Some(
+                to_item(&event_table_input).expect("unable to convert to item"),
+            ))
+            .send()
+            .await
+            .unwrap();
 
         events_subset.push(event_table_input);
     }
@@ -77,7 +76,7 @@ pub async fn create_events(
 fn setup_events(events_batch: SoclessEventBatch) -> Vec<SoclessEvent> {
     let mut formatted_events = vec![];
 
-    let created_at = events_batch.created_at.unwrap_or(gen_datetimenow());
+    let created_at = events_batch.created_at.unwrap_or_else(gen_datetimenow);
 
     for event_details in events_batch.details {
         let investigation_id = gen_id();
@@ -114,7 +113,8 @@ fn build_dedup_hash(event: &SoclessEvent) -> String {
     for kv_pair in dedup_kv_pairs {
         sorted_dedup_values.push(kv_pair.0);
     }
-    sorted_dedup_values.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+
+    sorted_dedup_values.sort_by_key(|a| a.to_lowercase());
 
     let dedup_signature: String = format!(
         "{}{}",
@@ -196,28 +196,33 @@ async fn execute_playbook(creation_event: EventTableItem, playbook_arn: &str) ->
 
     let results_table_name =
         env::var("SOCLESS_RESULTS_TABLE").expect("SOCLESS_RESULTS_TABLE not set in env!");
-    let table_input = to_item(results_table_input).unwrap();
 
-    put_item_in_table(PutItemInput {
-        item: table_input,
-        table_name: results_table_name,
-        ..Default::default()
-    })
-    .await
-    .unwrap();
+    let _result = get_or_init_dynamo()
+        .await
+        .put_item()
+        .table_name(&results_table_name)
+        .set_item(Some(
+            to_item(&results_table_input).expect("unable to convert to item"),
+        ))
+        .send()
+        .await
+        .unwrap();
 
-    let step_functions_input = StartExecutionInput {
-        name: Some(execution_id.clone()),
-        state_machine_arn: playbook_arn.to_owned(),
-        input: Some(
+    let start_exec_response = get_or_init_sfn()
+        .await
+        .start_execution()
+        .name(&execution_id)
+        .state_machine_arn(playbook_arn)
+        .input(
             json!({"execution_id": execution_id, "artifacts": playbook_input.artifacts})
                 .to_string(),
-        ),
-        trace_header: None,
-    };
+        )
+        .send()
+        .await;
 
-    let sf_client = StepFunctionsClient::new(Region::default());
-    let start_exec_response = sf_client.start_execution(step_functions_input).await;
+    // get_or_init_sfn().await.start_execution().input(
+
+    // );
 
     return match start_exec_response {
         Ok(start_exec_output) => ExecutionStatus {
@@ -237,7 +242,7 @@ async fn execute_playbook(creation_event: EventTableItem, playbook_arn: &str) ->
 fn get_playbook_arn(playbook_name: &str, lambda_context: &Context) -> String {
     let lambda_arn_split = lambda_context
         .invoked_function_arn
-        .split(":")
+        .split(':')
         .collect::<Vec<&str>>();
     let region = lambda_arn_split[3];
     let account_id = lambda_arn_split[4];
@@ -251,7 +256,8 @@ fn get_playbook_arn(playbook_name: &str, lambda_context: &Context) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lamedh_http::lambda::Config;
+    // use lamedh_http::lambda::Config;
+    use lambda_http::lambda_runtime::Config;
 
     #[test]
     fn test_results_table_struct() {

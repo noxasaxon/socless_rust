@@ -1,12 +1,11 @@
+use crate::clients::get_or_init_dynamo;
 /// Compare to https://github.com/twilio-labs/socless_python/blob/master/socless/integrations.py
 use crate::{
     fetch_utf8_from_vault, get_item_from_table, json_merge, split_with_delimiter,
-    update_item_in_table, PlaybookArtifacts, ResultsTableItem,
+    PlaybookArtifacts, ResultsTableItem,
 };
 use async_recursion::async_recursion;
-use lamedh_runtime::Context;
-use maplit::hashmap;
-use rusoto_dynamodb::{AttributeValue, UpdateItemInput};
+use lambda_runtime::Context;
 use serde::{Deserialize, Serialize};
 use serde_dynamo::{from_item, to_attribute_value};
 use serde_json::{from_value, json, to_value, Value};
@@ -149,7 +148,7 @@ async fn build_socless_context(event: &SoclessLambdaInput) -> SoclessContext {
             let item_response: ResultsTableItem = from_item(
                 get_item_from_table(
                     "execution_id",
-                    &execution_id,
+                    execution_id,
                     &var("SOCLESS_RESULTS_TABLE").unwrap(),
                 )
                 .await
@@ -206,20 +205,22 @@ pub async fn resolve_reference(reference_path: &Value, root_obj: &SoclessContext
     if reference_path.is_object() {
         let mut resolved_dict: HashMap<String, Value> = HashMap::new();
         for (key, value) in reference_path.as_object().unwrap() {
-            resolved_dict.insert(key.to_owned(), resolve_reference(&value, root_obj).await);
+            resolved_dict.insert(key.to_owned(), resolve_reference(value, root_obj).await);
         }
-        return to_value(resolved_dict).unwrap();
+
+        to_value(resolved_dict).unwrap()
     } else if reference_path.is_array() {
         let mut resolved_list: Vec<Value> = vec![];
         for item in reference_path.as_array().unwrap() {
             resolved_list.push(resolve_reference(item, root_obj).await);
         }
-        return to_value(resolved_list).unwrap();
+
+        to_value(resolved_list).unwrap()
     } else if reference_path.is_string() {
         let ref_string = reference_path.as_str().unwrap();
 
         let (trimmed_ref, _conversion) = match split_with_delimiter(ref_string, CONVERSION_TOKEN) {
-            Some((trimmed_ref, _, conversion)) => (trimmed_ref.to_string(), Some(conversion)),
+            Some((trimmed_ref, _, conversion)) => (trimmed_ref, Some(conversion)),
             None => (ref_string.to_string(), None),
         };
 
@@ -236,9 +237,9 @@ pub async fn resolve_reference(reference_path: &Value, root_obj: &SoclessContext
         //     Some(conversion_key) => apply_conversion(value_before_convert, conversion_key),
         //     None => value_before_convert,
         // };
-        return value_before_convert;
+        value_before_convert
     } else {
-        return reference_path.to_owned();
+        reference_path.to_owned()
     }
 }
 
@@ -263,7 +264,7 @@ async fn resolve_json_path(reference_path: &str, root_obj: &SoclessContext) -> V
 
     let mut obj_copy = to_value(root_obj).unwrap();
 
-    for key in post.split(".") {
+    for key in post.split('.') {
         let mut value = obj_copy[key].to_owned();
         if value.is_null() {
             panic!(
@@ -344,7 +345,7 @@ where
         )
         .await;
     }
-    return handler_result;
+    handler_result
 }
 
 /// Save the results of a State's execution to the Execution results table
@@ -355,47 +356,39 @@ pub async fn save_state_results(
     // socless_context: &SoclessContext,
     socless_context_errors: Option<HashMap<String, Value>>,
 ) {
-    let mut expression_attribute_values: HashMap<String, AttributeValue> = hashmap! {
-        ":r".to_owned() => to_attribute_value(handler_result)
-                            .expect("Unable to convert 'handler_result' to AttributeValue for PutItem"),
-    };
+    let mut update_item = get_or_init_dynamo()
+        .await
+        .update_item()
+        .table_name(
+            var("SOCLESS_RESULTS_TABLE")
+                .expect("No Environment Variable set for 'SOCLESS_RESULTS_TABLE'"),
+        )
+        .key("execution_id", to_attribute_value(execution_id).unwrap())
+        .expression_attribute_names("#name", state_config_name)
+        .expression_attribute_names("#last_results", "_Last_Saved_Results")
+        .expression_attribute_values(
+            ":r",
+            to_attribute_value(handler_result)
+                .expect("Unable to convert 'handler_result' to AttributeValue for PutItem"),
+        );
 
-    let error_expression = match socless_context_errors {
-        None => "",
-        Some(error_map) => {
-            if error_map.is_empty() {
-                ""
-            } else {
-                expression_attribute_values.insert(
-                    ":e".to_owned(),
-                    to_attribute_value(error_map)
-                        .expect("Unable to convert 'errors' to AttributeValue for PutItem"),
-                );
-                ",#results.errors = :e"
-            }
-        }
+    update_item = if let Some(context_errors_map) = socless_context_errors {
+        update_item
+            .expression_attribute_values(
+                ":e",
+                to_attribute_value(context_errors_map)
+                    .expect("Unable to convert 'errors' to AttributeValue for PutItem"),
+            )
+            .update_expression(
+                "SET #results.#results.#name = :r, #results.#results.#last_results = :r ,#results.errors = :e",
+            )
+    } else {
+        update_item.update_expression(
+            "SET #results.#results.#name = :r, #results.#results.#last_results = :r ",
+        )
     };
-
-    let input = UpdateItemInput {
-        table_name: var("SOCLESS_RESULTS_TABLE")
-            .expect("No Environment Variable set for 'SOCLESS_RESULTS_TABLE'"),
-        key: hashmap! {
-            "execution_id".to_string() =>
-            to_attribute_value(execution_id).unwrap(),
-        },
-        update_expression: Some(format!(
-            "SET #results.#results.#name = :r, #results.#results.#last_results = :r {}",
-            error_expression
-        )),
-        expression_attribute_names: Some(hashmap! {
-            "#name".to_string() => state_config_name.to_string(),
-            "#last_results".to_string() => "_Last_Saved_Results".to_string(),
-        }),
-        expression_attribute_values: Some(expression_attribute_values),
-        ..Default::default()
-    };
-
-    update_item_in_table(input)
+    update_item
+        .send()
         .await
         .expect("Unable to save result to Results Table");
 }
@@ -514,7 +507,7 @@ mod tests {
             "channel_id": "C123458"
         });
 
-        SoclessLambdaInput::from(mock_event_data);
+        let _test = SoclessLambdaInput::from(mock_event_data);
     }
 
     #[tokio::test]

@@ -1,14 +1,8 @@
-use rusoto_core::{Region, RusotoError};
-use rusoto_dynamodb::{
-    AttributeValue, DynamoDb, DynamoDbClient, GetItemInput, PutItemError, PutItemInput,
-    PutItemOutput, UpdateItemError, UpdateItemInput, UpdateItemOutput,
-};
-use rusoto_s3::{GetObjectError, GetObjectOutput, GetObjectRequest, S3Client, S3};
-use rusoto_stepfunctions::StepFunctionsClient;
-
+use crate::clients::{get_or_init_dynamo, get_or_init_s3};
+use aws_sdk_dynamodb::model::AttributeValue;
+use aws_sdk_s3::{error::GetObjectError, output::GetObjectOutput};
+use serde_dynamo::aws_sdk_dynamodb_0_4::to_attribute_value;
 use serde_json::Value;
-
-use futures::stream::TryStreamExt;
 use std::{collections::HashMap, env::var};
 
 pub async fn get_item_from_table(
@@ -16,67 +10,60 @@ pub async fn get_item_from_table(
     primary_key_value: &str,
     table_name: &str,
 ) -> Option<HashMap<String, AttributeValue>> {
-    let client = get_dynamo_client();
+    let client = get_or_init_dynamo().await;
 
-    let mut pkey = HashMap::new();
-    pkey.insert(
-        primary_key_name.to_string(),
-        AttributeValue {
-            s: Some(primary_key_value.to_string()),
-            ..Default::default()
-        },
-    );
-
-    let get_item_response = client
-        .get_item(GetItemInput {
-            key: pkey,
-            table_name: table_name.to_string(),
-            ..Default::default()
-        })
+    let result = client
+        .get_item()
+        .key(
+            primary_key_name,
+            to_attribute_value(primary_key_value).unwrap(),
+        )
+        .send()
         .await
-        .expect(&format!(
-            "Error in get_item of table: {} for key= {{ {} : {} }}",
-            table_name, primary_key_name, primary_key_value
-        ));
+        .unwrap_or_else(|_| {
+            panic!(
+                "Error in get_item of table: {} for key= {{ {} : {} }}",
+                table_name, primary_key_name, primary_key_value
+            )
+        });
 
-    get_item_response.item
+    result.item
+
+    // let mut pkey = HashMap::new();
+    // pkey.insert(
+    //     primary_key_name.to_string(),
+    //     AttributeValue {
+    //         s: Some(primary_key_value.to_string()),
+    //         ..Default::default()
+    //     },
+    // );
 }
 
-///
-///
-/// # Example
-/// ```ignore
-/// put_item_in_table(PutItemInput {
-///     item: to_item(event_table_input.clone()).unwrap(),
-///     table_name: events_table_name.to_owned(),
-///     ..Default::default()
-/// })
-/// .await
-/// .unwrap();
-/// ```
-pub async fn put_item_in_table(
-    item: PutItemInput,
-) -> Result<PutItemOutput, RusotoError<PutItemError>> {
-    let client = get_dynamo_client();
-    client.put_item(item).await
-}
+// ///
+// ///
+// /// # Example
+// /// ```ignore
+// /// put_item_in_table(PutItemInput {
+// ///     item: to_item(event_table_input.clone()).unwrap(),
+// ///     table_name: events_table_name.to_owned(),
+// ///     ..Default::default()
+// /// })
+// /// .await
+// /// .unwrap();
+// /// ```
+// pub async fn put_item_in_table(
+//     item: PutItemInput,
+// ) -> Result<PutItemOutput, RusotoError<PutItemError>> {
+//     let client = get_dynamo_client();
+//     client.put_item(item).await
+// }
 
-pub async fn update_item_in_table(
-    item: UpdateItemInput,
-) -> Result<UpdateItemOutput, RusotoError<UpdateItemError>> {
-    let client = get_dynamo_client();
-    client.update_item(item).await
-}
-
-pub fn get_dynamo_client() -> DynamoDbClient {
-    ////! FIX: setup with onceCell global state
-    DynamoDbClient::new(Region::default())
-}
-
-pub fn get_step_functions_client() -> StepFunctionsClient {
-    ////! FIX: setup with onceCell global state
-    StepFunctionsClient::new(Region::default())
-}
+// pub async fn update_item_in_table(
+//     item: UpdateItemInput,
+// ) -> Result<UpdateItemOutput, RusotoError<UpdateItemError>> {
+//     let client = get_dynamo_client();
+//     client.update_item(item).await
+// }
 
 /// Combine two serde Value objects
 /// # Example
@@ -105,22 +92,17 @@ pub fn json_merge(a: &mut Value, b: Value) {
     *a = b;
 }
 
-pub fn get_s3_client() -> S3Client {
-    ////! FIX: setup with onceCell global state
-    S3Client::new(Region::default())
-}
-
 pub async fn get_object_from_s3(
     key: &str,
     bucket_name: &str,
-) -> Result<GetObjectOutput, RusotoError<GetObjectError>> {
-    let client = get_s3_client();
-    let input = GetObjectRequest {
-        bucket: bucket_name.to_owned(),
-        key: key.to_owned(),
-        ..Default::default()
-    };
-    client.get_object(input).await
+) -> Result<GetObjectOutput, aws_sdk_s3::SdkError<GetObjectError>> {
+    get_or_init_s3()
+        .await
+        .get_object()
+        .bucket(bucket_name)
+        .key(key)
+        .send()
+        .await
 }
 
 pub async fn fetch_utf8_from_vault(key: &str) -> String {
@@ -128,17 +110,11 @@ pub async fn fetch_utf8_from_vault(key: &str) -> String {
         var(&"SOCLESS_VAULT").expect("No env var found for SOCLESS_VAULT s3 bucket");
 
     let object_result = get_object_from_s3(key, &socless_vault_bucket_name).await;
-    let object = object_result.expect(&format!("No object found for key: {}", key));
+    let object = object_result.unwrap_or_else(|_| panic!("No object found for key: {}", key));
 
-    let body = object.body.expect(&format!("No body in object: {}", key));
+    let body_as_bytes = object.body.collect().await.unwrap().into_bytes();
 
-    let body = body
-        .map_ok(|b| b.to_vec())
-        .try_concat()
-        .await
-        .expect("Unable to convert ByteStream after S3 get_object");
-
-    String::from_utf8(body).expect("S3 file is not valid utf8")
+    String::from_utf8(body_as_bytes.to_vec()).expect("S3 file is not valid utf8")
 }
 
 /// Search string for a given pattern, return a Tuple of (before_pattern, pattern, after_pattern)
@@ -150,7 +126,8 @@ pub async fn fetch_utf8_from_vault(key: &str) -> String {
 /// ```
 pub fn split_with_delimiter(string: &str, delimiter: &str) -> Option<(String, String, String)> {
     let searched: Vec<&str> = string.splitn(2, delimiter).collect();
-    return if searched.len() <= 1 {
+
+    if searched.len() <= 1 {
         None
     } else {
         Some((
@@ -158,7 +135,7 @@ pub fn split_with_delimiter(string: &str, delimiter: &str) -> Option<(String, St
             delimiter.to_string(),
             searched[1].to_string(),
         ))
-    };
+    }
 }
 
 #[cfg(test)]

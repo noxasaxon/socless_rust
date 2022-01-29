@@ -1,17 +1,13 @@
-use std::{collections::HashMap, env::var};
-
-use rusoto_dynamodb::{PutItemInput, UpdateItemInput};
-use rusoto_stepfunctions::{SendTaskSuccessInput, StepFunctions};
-use serde_dynamo::{from_item, to_attribute_value, to_item};
-use serde_json::{from_value, to_string, to_value, Value};
-
-use maplit::hashmap;
-
 use crate::{
-    gen_datetimenow, gen_id, get_item_from_table, helpers::get_step_functions_client,
-    integrations::save_state_results, put_item_in_table, update_item_in_table, ResponsesTableItem,
-    ResultsTableItem, SoclessContext,
+    clients::{get_or_init_dynamo, get_or_init_sfn},
+    gen_datetimenow, gen_id, get_item_from_table,
+    integrations::save_state_results,
+    ResponsesTableItem, ResultsTableItem, SoclessContext,
 };
+use maplit::hashmap;
+use serde_dynamo::{from_item, to_attribute_value, to_item};
+use serde_json::{from_value, to_string, Value};
+use std::{collections::HashMap, env::var};
 
 /// Initialize the human interaction worfklow by saving the Human Interaction Task Token to SOCless Message Responses Table.
 ///
@@ -29,7 +25,7 @@ pub async fn init_human_interaction<'a>(
     message_draft: &str,
     message_id: Option<String>,
 ) -> String {
-    let resolved_msg_id = message_id.unwrap_or(gen_id());
+    let resolved_msg_id = message_id.unwrap_or_else(gen_id);
 
     let investigation_id: String =
         from_value(execution_context.artifacts.unwrap()["event"]["investigation_id"].clone())
@@ -52,18 +48,20 @@ pub async fn init_human_interaction<'a>(
             .expect("No `await_token` found in context"),
     };
 
-    let item = to_item(to_value(response_table_item).unwrap()).unwrap();
+    let _result = get_or_init_dynamo()
+        .await
+        .put_item()
+        .table_name(
+            &var("SOCLESS_MESSAGE_RESPONSE_TABLE").expect("No env var set for response table"),
+        )
+        .set_item(Some(
+            to_item(&response_table_item).expect("unable to convert to item"),
+        ))
+        .send()
+        .await
+        .unwrap();
 
-    let _ = put_item_in_table(PutItemInput {
-        item,
-        table_name: var("SOCLESS_MESSAGE_RESPONSE_TABLE")
-            .expect("No env var set for response table"),
-        ..Default::default()
-    })
-    .await
-    .unwrap();
-
-    return resolved_msg_id;
+    resolved_msg_id
 }
 
 /// Completes a human interaction by returning the human's response to
@@ -120,32 +118,36 @@ pub async fn end_human_interaction(message_id: String, response_body: Value) {
     )
     .await;
 
-    get_step_functions_client()
-        .send_task_success(SendTaskSuccessInput {
-            output: to_string(&execution_results)
+    get_or_init_sfn()
+        .await
+        .send_task_success()
+        .task_token(response.await_token)
+        .output(
+            to_string(&execution_results)
                 .expect("Unable to convert PlaybookInput `execution_results` to json string"),
-            task_token: response.await_token,
-        })
+        )
+        .send()
         .await
         .expect("step_functions.send_task_success failed");
 
-    let input = UpdateItemInput {
-        table_name: response_table_name,
-        key: hashmap! {
-            "message_id".to_string() =>
-            to_attribute_value(message_id).unwrap(),
-        },
-        update_expression: Some(
+    get_or_init_dynamo()
+        .await
+        .update_item()
+        .table_name(response_table_name)
+        .key("message_id", to_attribute_value(message_id).unwrap())
+        .update_expression(
             "SET fulfilled = :fulfilled, response_payload = :response_payload".to_string(),
-        ),
-        expression_attribute_values: Some(hashmap! {
-            ":fulfilled".to_owned() => to_attribute_value(true).expect("Error converting to ExpressionAttributeValue"),
-            ":response_payload".to_owned() => to_attribute_value(response_body).expect("Error converting to ExpressionAttributeValue"),
-        }),
-        ..Default::default()
-    };
-
-    update_item_in_table(input)
+        )
+        .expression_attribute_values(
+            ":fulfilled",
+            to_attribute_value(true).expect("Error converting to ExpressionAttributeValue"),
+        )
+        .expression_attribute_values(
+            ":response_payload",
+            to_attribute_value(response_body)
+                .expect("Error converting to ExpressionAttributeValue"),
+        )
+        .send()
         .await
         .expect("Unable to save result to Results Table");
 }

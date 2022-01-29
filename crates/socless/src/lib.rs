@@ -10,6 +10,7 @@
 //!
 //! SOCless allows users to write complex State Machines that can do more than pass a Step's
 //! output directly to the next step.
+pub mod clients;
 pub mod events;
 pub mod helpers;
 pub mod humaninteraction;
@@ -19,8 +20,8 @@ pub mod utils;
 
 pub use events::{create_events, SoclessEventBatch};
 pub use helpers::{
-    fetch_utf8_from_vault, get_dynamo_client, get_item_from_table, get_object_from_s3,
-    get_s3_client, json_merge, put_item_in_table, split_with_delimiter, update_item_in_table,
+    fetch_utf8_from_vault, get_item_from_table, get_object_from_s3, json_merge,
+    split_with_delimiter,
 };
 pub use humaninteraction::{end_human_interaction, init_human_interaction};
 pub use integrations::{socless_bootstrap, SoclessContext, SoclessLambdaInput, StateConfig};
