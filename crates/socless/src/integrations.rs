@@ -6,7 +6,6 @@ use crate::{
 };
 use async_recursion::async_recursion;
 use lambda_runtime::Context;
-use maplit::hashmap;
 use serde::{Deserialize, Serialize};
 use serde_dynamo::{from_item, to_attribute_value};
 use serde_json::{from_value, json, to_value, Value};
