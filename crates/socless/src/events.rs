@@ -1,13 +1,13 @@
 // compare to https://github.com/twilio-labs/socless_python/blob/master/socless/events.py
 use crate::{
-    clients::{get_or_init_dynamo, get_or_init_sfn},
-    gen_datetimenow, gen_id, get_item_from_table, EventTableItem, PlaybookArtifacts, PlaybookInput,
-    ResultsTableItem, SoclessEvent,
+    clients::get_or_init_sfn, constants::RESULTS_TABLE_ENV, gen_datetimenow, gen_id,
+    get_item_from_table, utils::put_item_in_table, EventTableItem, PlaybookArtifacts,
+    PlaybookInput, ResultsTableItem, SoclessEvent,
 };
 use lambda_http::Context;
 use md5;
 use serde::{Deserialize, Serialize};
-use serde_dynamo::aws_sdk_dynamodb_0_4::{from_item, to_item};
+use serde_dynamo::aws_sdk_dynamodb_0_4::from_item;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::env;
@@ -51,16 +51,9 @@ pub async fn create_events(
 
         let event_table_input = EventTableItem::from(deduplicated);
 
-        let _result = get_or_init_dynamo()
+        put_item_in_table(&events_table_name, &event_table_input)
             .await
-            .put_item()
-            .table_name(&events_table_name)
-            .set_item(Some(
-                to_item(&event_table_input).expect("unable to convert to item"),
-            ))
-            .send()
-            .await
-            .unwrap();
+            .expect("failed to store item");
 
         events_subset.push(event_table_input);
     }
@@ -193,19 +186,9 @@ async fn execute_playbook(creation_event: EventTableItem, playbook_arn: &str) ->
         results: playbook_input.clone(),
     };
 
-    let results_table_name =
-        env::var("SOCLESS_RESULTS_TABLE").expect("SOCLESS_RESULTS_TABLE not set in env!");
-
-    let _result = get_or_init_dynamo()
+    put_item_in_table(&env::var(RESULTS_TABLE_ENV).unwrap(), &results_table_input)
         .await
-        .put_item()
-        .table_name(&results_table_name)
-        .set_item(Some(
-            to_item(&results_table_input).expect("unable to convert to item"),
-        ))
-        .send()
-        .await
-        .unwrap();
+        .expect("failed to store item");
 
     let start_exec_response = get_or_init_sfn()
         .await
@@ -218,10 +201,6 @@ async fn execute_playbook(creation_event: EventTableItem, playbook_arn: &str) ->
         )
         .send()
         .await;
-
-    // get_or_init_sfn().await.start_execution().input(
-
-    // );
 
     return match start_exec_response {
         Ok(start_exec_output) => ExecutionStatus {

@@ -1,0 +1,1 @@
+pub const RESULTS_TABLE_ENV: &str = "SOCLESS_RESULTS_TABLE";

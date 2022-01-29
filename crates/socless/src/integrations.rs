@@ -1,8 +1,7 @@
 use crate::clients::get_or_init_dynamo;
-use crate::utils::get_item_from_table;
-use crate::{
-    fetch_utf8_from_vault, json_merge, split_with_delimiter, PlaybookArtifacts, ResultsTableItem,
-};
+use crate::constants::RESULTS_TABLE_ENV;
+use crate::utils::{fetch_utf8_from_vault, get_item_from_table, json_merge, split_with_delimiter};
+use crate::{PlaybookArtifacts, ResultsTableItem};
 use async_recursion::async_recursion;
 use lambda_runtime::Context;
 use serde::{Deserialize, Serialize};
@@ -148,7 +147,7 @@ async fn build_socless_context(event: &SoclessLambdaInput) -> SoclessContext {
                 get_item_from_table(
                     "execution_id",
                     execution_id,
-                    &var("SOCLESS_RESULTS_TABLE").unwrap(),
+                    &var(RESULTS_TABLE_ENV).unwrap(),
                 )
                 .await
                 .expect("Execution ID not found in Results Table"),
@@ -359,7 +358,7 @@ pub async fn save_state_results(
         .await
         .update_item()
         .table_name(
-            var("SOCLESS_RESULTS_TABLE")
+            var(RESULTS_TABLE_ENV)
                 .expect("No Environment Variable set for 'SOCLESS_RESULTS_TABLE'"),
         )
         .key("execution_id", to_attribute_value(execution_id).unwrap())
