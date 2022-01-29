@@ -1,16 +1,13 @@
 use std::{collections::HashMap, env::var};
 
-use rusoto_dynamodb::{PutItemInput, UpdateItemInput};
-use rusoto_stepfunctions::{SendTaskSuccessInput, StepFunctions};
 use serde_dynamo::{from_item, to_attribute_value, to_item};
 use serde_json::{from_value, to_string, to_value, Value};
 
 use maplit::hashmap;
 
 use crate::{
-    gen_datetimenow, gen_id, get_item_from_table, helpers::get_step_functions_client,
-    integrations::save_state_results, put_item_in_table, update_item_in_table, ResponsesTableItem,
-    ResultsTableItem, SoclessContext,
+    clients::get_or_init_dynamo, gen_datetimenow, gen_id, get_item_from_table,
+    integrations::save_state_results, ResponsesTableItem, ResultsTableItem, SoclessContext,
 };
 
 /// Initialize the human interaction worfklow by saving the Human Interaction Task Token to SOCless Message Responses Table.
@@ -52,16 +49,18 @@ pub async fn init_human_interaction<'a>(
             .expect("No `await_token` found in context"),
     };
 
-    let item = to_item(to_value(response_table_item).unwrap()).unwrap();
-
-    let _ = put_item_in_table(PutItemInput {
-        item,
-        table_name: var("SOCLESS_MESSAGE_RESPONSE_TABLE")
-            .expect("No env var set for response table"),
-        ..Default::default()
-    })
-    .await
-    .unwrap();
+    let result = get_or_init_dynamo()
+        .await
+        .put_item()
+        .table_name(
+            &var("SOCLESS_MESSAGE_RESPONSE_TABLE").expect("No env var set for response table"),
+        )
+        .set_item(Some(
+            to_item(&response_table_item).expect("unable to convert to item"),
+        ))
+        .send()
+        .await
+        .unwrap();
 
     return resolved_msg_id;
 }
