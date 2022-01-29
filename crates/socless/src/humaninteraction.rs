@@ -1,16 +1,13 @@
-use std::{collections::HashMap, env::var};
-
-use serde_dynamo::{from_item, to_attribute_value, to_item};
-use serde_json::{from_value, to_string, to_value, Value};
-
-use maplit::hashmap;
-
 use crate::{
     clients::{get_or_init_dynamo, get_or_init_sfn},
     gen_datetimenow, gen_id, get_item_from_table,
     integrations::save_state_results,
     ResponsesTableItem, ResultsTableItem, SoclessContext,
 };
+use maplit::hashmap;
+use serde_dynamo::{from_item, to_attribute_value, to_item};
+use serde_json::{from_value, to_string, Value};
+use std::{collections::HashMap, env::var};
 
 /// Initialize the human interaction worfklow by saving the Human Interaction Task Token to SOCless Message Responses Table.
 ///
@@ -28,7 +25,7 @@ pub async fn init_human_interaction<'a>(
     message_draft: &str,
     message_id: Option<String>,
 ) -> String {
-    let resolved_msg_id = message_id.unwrap_or(gen_id());
+    let resolved_msg_id = message_id.unwrap_or_else(gen_id);
 
     let investigation_id: String =
         from_value(execution_context.artifacts.unwrap()["event"]["investigation_id"].clone())
@@ -51,7 +48,7 @@ pub async fn init_human_interaction<'a>(
             .expect("No `await_token` found in context"),
     };
 
-    let result = get_or_init_dynamo()
+    let _result = get_or_init_dynamo()
         .await
         .put_item()
         .table_name(
@@ -64,7 +61,7 @@ pub async fn init_human_interaction<'a>(
         .await
         .unwrap();
 
-    return resolved_msg_id;
+    resolved_msg_id
 }
 
 /// Completes a human interaction by returning the human's response to

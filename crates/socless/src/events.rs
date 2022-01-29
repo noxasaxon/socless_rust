@@ -1,28 +1,17 @@
-use aws_sdk_sfn::input::StartExecutionInput;
 // compare to https://github.com/twilio-labs/socless_python/blob/master/socless/events.py
-use lambda_http::Context;
-use md5;
-// use rusoto_core::Region;
-// use rusoto_dynamodb::PutItemInput;
-// use rusoto_stepfunctions::{StartExecutionInput, StepFunctions, StepFunctionsClient};
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-
-use std::collections::HashMap;
-use std::env;
-
 use crate::{
     clients::{get_or_init_dynamo, get_or_init_sfn},
     gen_datetimenow, gen_id,
     helpers::get_item_from_table,
     EventTableItem, PlaybookArtifacts, PlaybookInput, ResultsTableItem, SoclessEvent,
 };
-
-use aws_sdk_dynamodb::{
-    input::PutItemInput,
-    model::{AttributeValue, DeleteRequest, KeysAndAttributes, PutRequest, WriteRequest},
-};
-use serde_dynamo::aws_sdk_dynamodb_0_4::{from_item, from_items, to_attribute_value, to_item};
+use lambda_http::Context;
+use md5;
+use serde::{Deserialize, Serialize};
+use serde_dynamo::aws_sdk_dynamodb_0_4::{from_item, to_item};
+use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::env;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct SoclessEventBatch {
@@ -63,7 +52,7 @@ pub async fn create_events(
 
         let event_table_input = EventTableItem::from(deduplicated);
 
-        let result = get_or_init_dynamo()
+        let _result = get_or_init_dynamo()
             .await
             .put_item()
             .table_name(&events_table_name)
@@ -87,7 +76,7 @@ pub async fn create_events(
 fn setup_events(events_batch: SoclessEventBatch) -> Vec<SoclessEvent> {
     let mut formatted_events = vec![];
 
-    let created_at = events_batch.created_at.unwrap_or(gen_datetimenow());
+    let created_at = events_batch.created_at.unwrap_or_else(gen_datetimenow);
 
     for event_details in events_batch.details {
         let investigation_id = gen_id();
@@ -124,7 +113,8 @@ fn build_dedup_hash(event: &SoclessEvent) -> String {
     for kv_pair in dedup_kv_pairs {
         sorted_dedup_values.push(kv_pair.0);
     }
-    sorted_dedup_values.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+
+    sorted_dedup_values.sort_by_key(|a| a.to_lowercase());
 
     let dedup_signature: String = format!(
         "{}{}",
@@ -207,7 +197,7 @@ async fn execute_playbook(creation_event: EventTableItem, playbook_arn: &str) ->
     let results_table_name =
         env::var("SOCLESS_RESULTS_TABLE").expect("SOCLESS_RESULTS_TABLE not set in env!");
 
-    let result = get_or_init_dynamo()
+    let _result = get_or_init_dynamo()
         .await
         .put_item()
         .table_name(&results_table_name)
@@ -252,7 +242,7 @@ async fn execute_playbook(creation_event: EventTableItem, playbook_arn: &str) ->
 fn get_playbook_arn(playbook_name: &str, lambda_context: &Context) -> String {
     let lambda_arn_split = lambda_context
         .invoked_function_arn
-        .split(":")
+        .split(':')
         .collect::<Vec<&str>>();
     let region = lambda_arn_split[3];
     let account_id = lambda_arn_split[4];

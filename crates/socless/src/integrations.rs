@@ -148,7 +148,7 @@ async fn build_socless_context(event: &SoclessLambdaInput) -> SoclessContext {
             let item_response: ResultsTableItem = from_item(
                 get_item_from_table(
                     "execution_id",
-                    &execution_id,
+                    execution_id,
                     &var("SOCLESS_RESULTS_TABLE").unwrap(),
                 )
                 .await
@@ -205,20 +205,22 @@ pub async fn resolve_reference(reference_path: &Value, root_obj: &SoclessContext
     if reference_path.is_object() {
         let mut resolved_dict: HashMap<String, Value> = HashMap::new();
         for (key, value) in reference_path.as_object().unwrap() {
-            resolved_dict.insert(key.to_owned(), resolve_reference(&value, root_obj).await);
+            resolved_dict.insert(key.to_owned(), resolve_reference(value, root_obj).await);
         }
-        return to_value(resolved_dict).unwrap();
+
+        to_value(resolved_dict).unwrap()
     } else if reference_path.is_array() {
         let mut resolved_list: Vec<Value> = vec![];
         for item in reference_path.as_array().unwrap() {
             resolved_list.push(resolve_reference(item, root_obj).await);
         }
-        return to_value(resolved_list).unwrap();
+
+        to_value(resolved_list).unwrap()
     } else if reference_path.is_string() {
         let ref_string = reference_path.as_str().unwrap();
 
         let (trimmed_ref, _conversion) = match split_with_delimiter(ref_string, CONVERSION_TOKEN) {
-            Some((trimmed_ref, _, conversion)) => (trimmed_ref.to_string(), Some(conversion)),
+            Some((trimmed_ref, _, conversion)) => (trimmed_ref, Some(conversion)),
             None => (ref_string.to_string(), None),
         };
 
@@ -235,9 +237,9 @@ pub async fn resolve_reference(reference_path: &Value, root_obj: &SoclessContext
         //     Some(conversion_key) => apply_conversion(value_before_convert, conversion_key),
         //     None => value_before_convert,
         // };
-        return value_before_convert;
+        value_before_convert
     } else {
-        return reference_path.to_owned();
+        reference_path.to_owned()
     }
 }
 
@@ -262,7 +264,7 @@ async fn resolve_json_path(reference_path: &str, root_obj: &SoclessContext) -> V
 
     let mut obj_copy = to_value(root_obj).unwrap();
 
-    for key in post.split(".") {
+    for key in post.split('.') {
         let mut value = obj_copy[key].to_owned();
         if value.is_null() {
             panic!(
@@ -343,7 +345,7 @@ where
         )
         .await;
     }
-    return handler_result;
+    handler_result
 }
 
 /// Save the results of a State's execution to the Execution results table
@@ -505,7 +507,7 @@ mod tests {
             "channel_id": "C123458"
         });
 
-        SoclessLambdaInput::from(mock_event_data);
+        let test = SoclessLambdaInput::from(mock_event_data);
     }
 
     #[tokio::test]

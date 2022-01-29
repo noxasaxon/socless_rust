@@ -1,10 +1,9 @@
+use crate::clients::{get_or_init_dynamo, get_or_init_s3};
 use aws_sdk_dynamodb::model::AttributeValue;
 use aws_sdk_s3::{error::GetObjectError, output::GetObjectOutput};
-use serde_dynamo::aws_sdk_dynamodb_0_4::{from_item, from_items, to_attribute_value, to_item};
+use serde_dynamo::aws_sdk_dynamodb_0_4::to_attribute_value;
 use serde_json::Value;
 use std::{collections::HashMap, env::var};
-
-use crate::clients::{get_or_init_dynamo, get_or_init_s3};
 
 pub async fn get_item_from_table(
     primary_key_name: &str,
@@ -21,10 +20,12 @@ pub async fn get_item_from_table(
         )
         .send()
         .await
-        .expect(&format!(
-            "Error in get_item of table: {} for key= {{ {} : {} }}",
-            table_name, primary_key_name, primary_key_value
-        ));
+        .unwrap_or_else(|_| {
+            panic!(
+                "Error in get_item of table: {} for key= {{ {} : {} }}",
+                table_name, primary_key_name, primary_key_value
+            )
+        });
 
     result.item
 
@@ -109,7 +110,7 @@ pub async fn fetch_utf8_from_vault(key: &str) -> String {
         var(&"SOCLESS_VAULT").expect("No env var found for SOCLESS_VAULT s3 bucket");
 
     let object_result = get_object_from_s3(key, &socless_vault_bucket_name).await;
-    let object = object_result.expect(&format!("No object found for key: {}", key));
+    let object = object_result.unwrap_or_else(|_| panic!("No object found for key: {}", key));
 
     let body_as_bytes = object.body.collect().await.unwrap().into_bytes();
 
@@ -125,7 +126,8 @@ pub async fn fetch_utf8_from_vault(key: &str) -> String {
 /// ```
 pub fn split_with_delimiter(string: &str, delimiter: &str) -> Option<(String, String, String)> {
     let searched: Vec<&str> = string.splitn(2, delimiter).collect();
-    return if searched.len() <= 1 {
+
+    if searched.len() <= 1 {
         None
     } else {
         Some((
@@ -133,7 +135,7 @@ pub fn split_with_delimiter(string: &str, delimiter: &str) -> Option<(String, St
             delimiter.to_string(),
             searched[1].to_string(),
         ))
-    };
+    }
 }
 
 #[cfg(test)]

@@ -1,4 +1,3 @@
-use tokio::sync;
 use tokio::sync::OnceCell;
 
 pub static AWS_CONFIG: OnceCell<aws_config::Config> = OnceCell::const_new();
@@ -13,7 +12,7 @@ pub async fn get_or_init_dynamo() -> &'static aws_sdk_dynamodb::Client {
     DYNAMO_CLIENT
         .get_or_init(|| async {
             let aws_config = get_or_init_aws_config().await;
-            aws_sdk_dynamodb::Client::new(&aws_config)
+            aws_sdk_dynamodb::Client::new(aws_config)
         })
         .await
 }
@@ -23,7 +22,7 @@ pub async fn get_or_init_sfn() -> &'static aws_sdk_sfn::Client {
     SFN_CLIENT
         .get_or_init(|| async {
             let aws_config = get_or_init_aws_config().await;
-            aws_sdk_sfn::Client::new(&aws_config)
+            aws_sdk_sfn::Client::new(aws_config)
         })
         .await
 }
@@ -33,7 +32,7 @@ pub async fn get_or_init_s3() -> &'static aws_sdk_s3::Client {
     S3_CLIENT
         .get_or_init(|| async {
             let aws_config = get_or_init_aws_config().await;
-            aws_sdk_s3::Client::new(&aws_config)
+            aws_sdk_s3::Client::new(aws_config)
         })
         .await
 }
