@@ -1,3 +1,4 @@
+use tokio::sync;
 use tokio::sync::OnceCell;
 
 pub static AWS_CONFIG: OnceCell<aws_config::Config> = OnceCell::const_new();
