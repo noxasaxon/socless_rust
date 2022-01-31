@@ -1,11 +1,10 @@
 use crate::{
-    clients::{get_or_init_dynamo, get_or_init_sfn},
-    gen_datetimenow, gen_id, get_item_from_table,
-    integrations::save_state_results,
+    constants::RESULTS_TABLE_ENV, gen_datetimenow, gen_id, get_item_from_table, get_or_init_dynamo,
+    get_or_init_sfn, integrations::save_state_results, utils::put_item_in_table,
     ResponsesTableItem, ResultsTableItem, SoclessContext,
 };
 use maplit::hashmap;
-use serde_dynamo::{from_item, to_attribute_value, to_item};
+use serde_dynamo::{from_item, to_attribute_value};
 use serde_json::{from_value, to_string, Value};
 use std::{collections::HashMap, env::var};
 
@@ -48,18 +47,12 @@ pub async fn init_human_interaction<'a>(
             .expect("No `await_token` found in context"),
     };
 
-    let _result = get_or_init_dynamo()
-        .await
-        .put_item()
-        .table_name(
-            &var("SOCLESS_MESSAGE_RESPONSE_TABLE").expect("No env var set for response table"),
-        )
-        .set_item(Some(
-            to_item(&response_table_item).expect("unable to convert to item"),
-        ))
-        .send()
-        .await
-        .unwrap();
+    put_item_in_table(
+        &var("SOCLESS_MESSAGE_RESPONSE_TABLE").expect("No env var set for response table"),
+        &response_table_item,
+    )
+    .await
+    .expect("failed to store item");
 
     resolved_msg_id
 }
@@ -89,7 +82,7 @@ pub async fn end_human_interaction(message_id: String, response_body: Value) {
     }
 
     let results_item = get_item_from_table(
-        &var("SOCLESS_RESULTS_TABLE").unwrap(),
+        &var(RESULTS_TABLE_ENV).unwrap(),
         "execution_id",
         &response.execution_id,
     )

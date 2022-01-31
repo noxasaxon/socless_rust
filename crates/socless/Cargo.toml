@@ -2,16 +2,15 @@
 name = "socless"
 version = "0.1.0"
 authors = ["Saxon <34722463+noxasaxon@users.noreply.github.com>"]
-edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+edition = "2021"
+rust-version = "1.58"
 
 [dependencies]
 lambda_http = "0.4"
 lambda_runtime = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-md5 = { version = "0.7" }
+md5 = "0.7" 
 uuid = { version = "0.8", features = ["v4"] }
 chrono = "0.4.19"
 itertools = "0.10"
@@ -20,15 +19,14 @@ async-recursion = "1.0"
 # tokio = { version = "1.15", features = ["macros", "sync"] }
 tokio = { version = "1.15", features = ["macros", "parking_lot"] }
 maplit = "1.0.2"
-# hyper = { version = "0.14", default_features = false, features = ["http2"], optional = true } # needed for rustls
-
 aws-config = {version = "0.4", features=["rustls"]}
 aws-types = {version = "0.4"}
 aws-sdk-dynamodb = {version = "0.4", features=["rustls"]}
 aws-sdk-sfn = {version = "0.4", features=["rustls"]}
 aws-sdk-s3 = {version = "0.4", features=["rustls"]}
 serde_dynamo = { version = "3.0.0-alpha", features = ["aws-sdk-dynamodb+0_4"] }
-hyper = { version = "0.14" }
+hyper = "0.14" 
+# hyper = { version = "0.14", default_features = false, features = ["http2"], optional = true } # needed for rustls
 hyper-rustls = {version = "0.23", features = ["webpki-roots", "rustls-native-certs"]}
 rustls = "0.20"
 
