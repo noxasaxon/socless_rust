@@ -16,14 +16,16 @@ pub mod events;
 pub mod humaninteraction;
 pub mod integrations;
 pub mod models;
+pub mod resolver;
 pub mod utils;
 
 pub use clients::*;
 pub use events::{create_events, SoclessEventBatch};
 pub use humaninteraction::{end_human_interaction, init_human_interaction};
-pub use integrations::{socless_bootstrap, SoclessContext, SoclessLambdaInput, StateConfig};
+pub use integrations::socless_bootstrap;
 pub use models::{
     EventTableItem, PlaybookArtifacts, PlaybookInput, ResponsesTableItem, ResultsTableItem,
     SoclessEvent,
 };
+pub use resolver::{SoclessContext, SoclessLambdaInput, StateConfig};
 pub use utils::{gen_datetimenow, gen_id, get_item_from_table};
