@@ -79,8 +79,10 @@ pub fn test_context_params_with_all_resolution_types() -> (StateConfig, SoclessC
 
 #[cfg(test)]
 mod tests {
+    use minijinja::{context, Environment};
     use pretty_assertions::{assert_eq, assert_ne};
-    use serde_json::{json, to_value};
+    use serde_json::{json, to_value, Value};
+    use socless::SoclessContext;
 
     use crate::test_context_params_with_all_resolution_types;
 
@@ -111,5 +113,56 @@ mod tests {
                 // "test_vault-jinja": "vault:socless_vault_tests.txt",
             })
         )
+    }
+
+    #[tokio::test]
+    async fn test_jinja() {
+        pub async fn jinja_template_resolver(
+            reference_path: &Value,
+            root_obj: &SoclessContext,
+        ) -> Value {
+            // let result = Tera::one_off(reference_path.as_str().unwrap(), context, true);
+
+            // use minijinja::{context, Environment};
+            // let mut env = Environment::new();
+            // env.add_template("hello.txt", "Hello {{ name }}!").unwrap();
+            // let template = env.get_template("hello.txt").unwrap();
+            // println!("{}", template.render(context! { name => "World" }).unwrap());
+            // Value::from("")
+
+            let mut env = Environment::new();
+            // env.add_template("test.txt", )
+            env.add_template(
+                "hello.txt",
+                "Hello {{ context.artifacts.event.details.name }}!",
+            )
+            .unwrap();
+
+            let template = env.get_template("hello.txt").unwrap();
+            // let user = User {
+            //     name: "John".into(),
+            // };
+            let (mut state_config, context) = test_context_params_with_all_resolution_types();
+
+            let result = template.render(context!(context)).unwrap();
+            println!("{result}");
+            assert!(false);
+            Value::from("")
+        }
+        let mut env = Environment::new();
+        // env.add_template("test.txt", )
+        env.add_template("hello.txt", "{{ context.artifacts.event.details.age}}")
+            .unwrap();
+
+        let template = env.get_template("hello.txt").unwrap();
+        // let user = User {
+        //     name: "John".into(),
+        // };
+        let (mut state_config, context) = test_context_params_with_all_resolution_types();
+
+        let result = template.render(context!(context)).unwrap();
+        println!("{result}");
+        dbg!(result);
+        assert!(false);
     }
 }

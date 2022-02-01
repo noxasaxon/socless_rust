@@ -4,6 +4,7 @@ use async_recursion::async_recursion;
 use serde::{Deserialize, Serialize};
 use serde_dynamo::from_item;
 use serde_json::{from_value, json, to_value, Value};
+use tera::Tera;
 
 use crate::{
     constants::RESULTS_TABLE_ENV,

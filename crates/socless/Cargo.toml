@@ -28,7 +28,10 @@ serde_dynamo = { version = "3.0.0-alpha", features = ["aws-sdk-dynamodb+0_4"] }
 hyper = "0.14" 
 # hyper = { version = "0.14", default_features = false, features = ["http2"], optional = true } # needed for rustls
 hyper-rustls = {version = "0.23", features = ["webpki-roots", "rustls-native-certs"]}
+
 rustls = "0.20"
+tera = "1.15"
+minijinja= "0.13"
 
 [dev-dependencies]
 tokio-test = "0.4"
