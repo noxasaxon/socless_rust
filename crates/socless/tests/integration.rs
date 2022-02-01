@@ -6,6 +6,7 @@ mod models;
 
 use hyper::Uri;
 use localstack_setup::wait_for_localstack_container;
+use serde_json::{json, Value};
 use testcontainers::clients::Cli;
 
 // #[tokio::test]
@@ -35,3 +36,18 @@ use testcontainers::clients::Cli;
 
 //     // wait_for_table("table_name", &uri.to_string()).await;
 // }
+
+pub fn all_params_for_resolution() -> Value {
+    json!({
+        "artifacts": {
+            "event": {
+                "details": {
+                    "firstname": "Sterling",
+                    "middlename": "Malory",
+                    "lastname": "Archer",
+                    "vault_test": "vault:socless_vault_tests.txt",
+                }
+            }
+        }
+    })
+}

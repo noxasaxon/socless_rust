@@ -16,6 +16,21 @@ const VAULT_TOKEN: &str = "vault:";
 const PATH_TOKEN: &str = "$.";
 const CONVERSION_TOKEN: &str = "!";
 
+pub async fn resolve_parameters(
+    params: &HashMap<String, Value>,
+    socless_context: &SoclessContext,
+) -> HashMap<String, Value> {
+    let mut resolved_parameters = HashMap::new();
+    for (parameter, reference) in params {
+        resolved_parameters.insert(
+            parameter.to_owned(),
+            resolve_reference(&reference, socless_context).await,
+        );
+    }
+
+    resolved_parameters
+}
+
 /// The SOCless Event structure required to run a SOCless integration lambda function
 /// The Lambda function execution context. The values in this struct
 /// are populated using the [Lambda environment variables](https://docs.aws.amazon.com/lambda/latest/dg/current-supported-versions.html)
@@ -42,20 +57,8 @@ pub struct SoclessLambdaInput {
 
 impl SoclessLambdaInput {
     pub async fn resolve_state_config_parameters(&mut self, socless_context: &SoclessContext) {
-        let current_state_config = self.clone().state_config;
-
-        let mut resolved_state_config = StateConfig {
-            parameters: HashMap::new(),
-            ..current_state_config
-        };
-        for (parameter, reference) in current_state_config.parameters {
-            resolved_state_config.parameters.insert(
-                parameter,
-                resolve_reference(&reference, socless_context).await,
-            );
-        }
-
-        self.state_config = resolved_state_config
+        self.state_config.parameters =
+            resolve_parameters(&self.state_config.parameters, socless_context).await;
     }
 }
 
@@ -138,7 +141,8 @@ pub struct SoclessContext {
 }
 
 /// Evaluate a reference path and return the referenced value
-/// ```rust
+/// ### Example
+/// ```
 /// # use serde_json::{from_value, json, to_value, Value};
 /// # use socless::resolver::{resolve_reference, SoclessContext};
 /// let root_object: SoclessContext = from_value(json!({

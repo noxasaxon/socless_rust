@@ -1,11 +1,11 @@
-use crate::clients::get_or_init_dynamo;
-use crate::constants::RESULTS_TABLE_ENV;
-use crate::resolver::{SoclessContext, SoclessLambdaInput};
-use crate::utils::{fetch_utf8_from_vault, get_item_from_table, json_merge};
-use crate::{PlaybookArtifacts, ResultsTableItem};
-use async_recursion::async_recursion;
+use crate::{
+    clients::get_or_init_dynamo,
+    constants::RESULTS_TABLE_ENV,
+    resolver::{SoclessContext, SoclessLambdaInput},
+    utils::{get_item_from_table, json_merge},
+    ResultsTableItem,
+};
 use lambda_runtime::Context;
-use serde::{Deserialize, Serialize};
 use serde_dynamo::{from_item, to_attribute_value};
 use serde_json::{from_value, json, to_value, Value};
 use std::env;
