@@ -91,7 +91,7 @@ use std::env::var;
 /// # Example
 ///```
 /// use serde_json::json;
-/// use socless::json_merge;
+/// use socless::utils::json_merge;
 ///
 /// let mut mutable_json_object = json!({ "foo" : "bar" });
 /// let object_to_merge = json!({ "baz" : "spam" });
@@ -142,7 +142,7 @@ pub async fn fetch_utf8_from_vault(key: &str) -> String {
 /// Search string for a given pattern, return a Tuple of (before_pattern, pattern, after_pattern)
 /// # Example
 /// ```
-/// use socless::split_with_delimiter;
+/// use socless::utils::split_with_delimiter;
 /// let result = split_with_delimiter("something.something!json", "!");
 /// assert_eq!(result, Some(("something.something".to_string(), "!".to_string(), "json".to_string())));
 /// ```
