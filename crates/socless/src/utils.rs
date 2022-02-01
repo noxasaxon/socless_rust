@@ -139,27 +139,6 @@ pub async fn fetch_utf8_from_vault(key: &str) -> String {
     String::from_utf8(body_as_bytes.to_vec()).expect("S3 file is not valid utf8")
 }
 
-/// Search string for a given pattern, return a Tuple of (before_pattern, pattern, after_pattern)
-/// # Example
-/// ```
-/// use socless::utils::split_with_delimiter;
-/// let result = split_with_delimiter("something.something!json", "!");
-/// assert_eq!(result, Some(("something.something".to_string(), "!".to_string(), "json".to_string())));
-/// ```
-pub fn split_with_delimiter(string: &str, delimiter: &str) -> Option<(String, String, String)> {
-    let searched: Vec<&str> = string.splitn(2, delimiter).collect();
-
-    if searched.len() <= 1 {
-        None
-    } else {
-        Some((
-            searched[0].to_string(),
-            delimiter.to_string(),
-            searched[1].to_string(),
-        ))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,62 +151,5 @@ mod tests {
     #[test]
     fn test_gen_datetimenow() {
         assert_eq!(27, gen_datetimenow().len());
-    }
-    #[test]
-    fn test_split_with_delimiter() {
-        let result = split_with_delimiter("something.something!json", "!");
-        assert_eq!(
-            result,
-            Some((
-                "something.something".to_string(),
-                "!".to_string(),
-                "json".to_string()
-            ))
-        );
-    }
-
-    #[test]
-    fn test_split_with_delimiter_not_found() {
-        let result = split_with_delimiter("something.somethingjson", "!");
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn test_split_with_delimiter_appear_twice() {
-        let result = split_with_delimiter("something.something!!json", "!");
-        assert_eq!(
-            result,
-            Some((
-                "something.something".to_string(),
-                "!".to_string(),
-                "!json".to_string()
-            ))
-        );
-    }
-
-    #[test]
-    fn test_split_with_delimiter_appear_at_end() {
-        let result = split_with_delimiter("something.somethingjson!", "!");
-        assert_eq!(
-            result,
-            Some((
-                "something.somethingjson".to_string(),
-                "!".to_string(),
-                "".to_string()
-            ))
-        );
-    }
-
-    #[test]
-    fn test_split_with_delimiter_appear_at_beginning() {
-        let result = split_with_delimiter("!something.somethingjson", "!");
-        assert_eq!(
-            result,
-            Some((
-                "".to_string(),
-                "!".to_string(),
-                "something.somethingjson".to_string()
-            ))
-        );
     }
 }

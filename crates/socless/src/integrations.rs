@@ -1,6 +1,6 @@
 use crate::clients::get_or_init_dynamo;
 use crate::constants::RESULTS_TABLE_ENV;
-use crate::utils::{fetch_utf8_from_vault, get_item_from_table, json_merge, split_with_delimiter};
+use crate::utils::{fetch_utf8_from_vault, get_item_from_table, json_merge};
 use crate::{PlaybookArtifacts, ResultsTableItem};
 use async_recursion::async_recursion;
 use lambda_runtime::Context;
@@ -217,8 +217,8 @@ pub async fn resolve_reference(reference_path: &Value, root_obj: &SoclessContext
     } else if reference_path.is_string() {
         let ref_string = reference_path.as_str().unwrap();
 
-        let (trimmed_ref, _conversion) = match split_with_delimiter(ref_string, CONVERSION_TOKEN) {
-            Some((trimmed_ref, _, conversion)) => (trimmed_ref, Some(conversion)),
+        let (trimmed_ref, _conversion) = match ref_string.split_once(CONVERSION_TOKEN) {
+            Some((trimmed_ref, conversion)) => (trimmed_ref.to_string(), Some(conversion)),
             None => (ref_string.to_string(), None),
         };
 
@@ -247,7 +247,7 @@ pub async fn resolve_reference(reference_path: &Value, root_obj: &SoclessContext
 /// in as parameters to Socless integrations. It fetches and returns the content
 /// of the Vault object with name `file_name` in the vault.
 async fn resolve_vault_path(reference_path: &str) -> String {
-    let (_, _, file_id) = split_with_delimiter(reference_path, VAULT_TOKEN).unwrap();
+    let (_, file_id) = reference_path.split_once(VAULT_TOKEN).unwrap();
     let data = fetch_utf8_from_vault(&file_id).await;
     data
 }
@@ -258,7 +258,7 @@ async fn resolve_vault_path(reference_path: &str) -> String {
 ///
 /// Does not support the full JsonPath specification.
 async fn resolve_json_path(reference_path: &str, root_obj: &SoclessContext) -> Value {
-    let (_pre, _, post) = split_with_delimiter(reference_path, PATH_TOKEN).unwrap();
+    let (_pre, post) = reference_path.split_once(PATH_TOKEN).unwrap();
 
     let mut obj_copy = to_value(root_obj).unwrap();
 
