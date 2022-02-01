@@ -6,7 +6,8 @@ mod models;
 
 use hyper::Uri;
 use localstack_setup::wait_for_localstack_container;
-use serde_json::{json, Value};
+use serde_json::{from_value, json, Value};
+use socless::{SoclessContext, StateConfig};
 use testcontainers::clients::Cli;
 
 // #[tokio::test]
@@ -37,17 +38,78 @@ use testcontainers::clients::Cli;
 //     // wait_for_table("table_name", &uri.to_string()).await;
 // }
 
-pub fn all_params_for_resolution() -> Value {
-    json!({
-        "artifacts": {
-            "event": {
-                "details": {
-                    "firstname": "Sterling",
-                    "middlename": "Malory",
-                    "lastname": "Archer",
-                    "vault_test": "vault:socless_vault_tests.txt",
+pub fn test_context_params_with_all_resolution_types() -> (StateConfig, SoclessContext) {
+    (
+        from_value::<StateConfig>(json!({
+            "Name" : "testing_all",
+            "Parameters" : {
+                "test_age-jsonpath" : "$.artifacts.event.details.age",
+                // "test_age-jinja" : "{{context.artifacts.event.details.age}}",
+
+                // "test_item_0-jsonpath" : "$.artifacts.event.details.items[0]",
+                // "test_item_0-jinja" : "{{context.artifacts.event.details.items[0]}}",
+                // "test_item_1_pin-jsonpath": "$.artifacts.event.details.items[1].pin",
+                // "test_item_1_pin-jinja": "{{context.artifacts.event.details.items[1].pin}}",
+
+                "test_weight-jsonpath" : "$.artifacts.event.details.weight",
+                // "test_weight-jinja" : "{{context.artifacts.event.details.weight}}",
+
+                "test_secrets-jinja" : "asdf", // TODO
+
+                // "test_vault-jsonpath": "vault:socless_vault_tests.txt",
+                // "test_vault-jinja": "vault:socless_vault_tests.txt",
+            }
+        }))
+        .unwrap(),
+        from_value::<SoclessContext>(json!({
+            "artifacts": {
+                "event": {
+                    "details": {
+                        "name": "Leshy",
+                        "age": 99,
+                        "items": ["camera", {"pin" : 1234}],
+                        "weight" : 33.57,
+                    }
                 }
             }
-        }
-    })
+        }))
+        .unwrap(),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use pretty_assertions::{assert_eq, assert_ne};
+    use serde_json::{json, to_value};
+
+    use crate::test_context_params_with_all_resolution_types;
+
+    #[tokio::test]
+    async fn test_build_socless_boilerplate_with_complete_event_already_set_up() {
+        let (mut state_config, context) = test_context_params_with_all_resolution_types();
+        state_config.resolve_parameters(&context).await;
+
+        let details = &context.artifacts.clone().unwrap()["event"]["details"];
+
+        assert_eq!(
+            to_value(state_config.parameters).unwrap(),
+            json!({
+                "test_age-jsonpath" : details["age"],
+                // "test_age-jinja" : details["age"],
+
+                // "test_item_0-jsonpath" : details["items"][0],
+                // "test_item_0-jinja" :details["items"][0],
+                // "test_item_1_pin-jsonpath":details["items"][1]["pin"],
+                // "test_item_1_pin-jinja":details["items"][1]["pin"],
+
+                "test_weight-jsonpath" :details["weight"],
+                // "test_weight-jinja" :details["weight"],
+
+                "test_secrets-jinja" : "asdf", // TODO
+
+                // "test_vault-jsonpath": "vault:socless_vault_tests.txt",
+                // "test_vault-jinja": "vault:socless_vault_tests.txt",
+            })
+        )
+    }
 }

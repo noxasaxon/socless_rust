@@ -122,6 +122,12 @@ pub struct StateConfig {
     pub other: HashMap<String, Value>,
 }
 
+impl StateConfig {
+    pub async fn resolve_parameters(&mut self, socless_context: &SoclessContext) {
+        self.parameters = resolve_parameters(&self.parameters, socless_context).await;
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SoclessContext {
     #[serde(skip_serializing_if = "Option::is_none")]

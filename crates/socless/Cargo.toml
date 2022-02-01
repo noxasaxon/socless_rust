@@ -35,6 +35,8 @@ tokio-test = "0.4"
 testcontainers = { git= "https://github.com/testcontainers/testcontainers-rs", rev="bec5196f120c112da696be7c9053f63d5811e8c6"}
 anyhow = "1.0"
 reqwest = {version = "0.11", features = ["blocking"] }
+pretty_assertions = "1.0"
+
 
 # [features]
 # default = ["rusoto_core/default", "rusoto_s3/default", "rusoto_dynamodb/default", "rusoto_stepfunctions/default"]
