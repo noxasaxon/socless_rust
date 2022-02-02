@@ -81,6 +81,8 @@ pub fn test_context_params_with_all_resolution_types() -> (StateConfig, SoclessC
 mod tests {
     use minijinja::{context, Environment};
     use pretty_assertions::{assert_eq, assert_ne};
+    use pyo3::prelude::*;
+    use pyo3::types::IntoPyDict;
     use serde_json::{json, to_value, Value};
     use socless::SoclessContext;
 
@@ -123,30 +125,6 @@ mod tests {
         ) -> Value {
             // let result = Tera::one_off(reference_path.as_str().unwrap(), context, true);
 
-            // use minijinja::{context, Environment};
-            // let mut env = Environment::new();
-            // env.add_template("hello.txt", "Hello {{ name }}!").unwrap();
-            // let template = env.get_template("hello.txt").unwrap();
-            // println!("{}", template.render(context! { name => "World" }).unwrap());
-            // Value::from("")
-
-            let mut env = Environment::new();
-            // env.add_template("test.txt", )
-            env.add_template(
-                "hello.txt",
-                "Hello {{ context.artifacts.event.details.name }}!",
-            )
-            .unwrap();
-
-            let template = env.get_template("hello.txt").unwrap();
-            // let user = User {
-            //     name: "John".into(),
-            // };
-            let (mut state_config, context) = test_context_params_with_all_resolution_types();
-
-            let result = template.render(context!(context)).unwrap();
-            println!("{result}");
-            assert!(false);
             Value::from("")
         }
         let mut env = Environment::new();
@@ -155,14 +133,27 @@ mod tests {
             .unwrap();
 
         let template = env.get_template("hello.txt").unwrap();
-        // let user = User {
-        //     name: "John".into(),
-        // };
+
         let (mut state_config, context) = test_context_params_with_all_resolution_types();
 
         let result = template.render(context!(context)).unwrap();
-        println!("{result}");
         dbg!(result);
-        assert!(false);
+        // assert!(false);
+    }
+
+    #[tokio::test]
+    async fn test_pyo3() -> PyResult<()> {
+        Python::with_gil(|py| {
+            let sys = py.import("sys")?;
+            let version: String = sys.getattr("version")?.extract()?;
+
+            let locals = [("os", py.import("os")?)].into_py_dict(py);
+            let code = "os.getenv('USER') or os.getenv('USERNAME') or 'Unknown'";
+            let user: String = py.eval(code, None, Some(&locals))?.extract()?;
+
+            println!("Hello {}, I'm Python {}", user, version);
+            assert!(false);
+            Ok(())
+        })
     }
 }

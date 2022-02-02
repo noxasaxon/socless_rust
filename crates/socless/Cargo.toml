@@ -32,6 +32,8 @@ hyper-rustls = {version = "0.23", features = ["webpki-roots", "rustls-native-cer
 rustls = "0.20"
 tera = "1.15"
 minijinja= "0.13"
+pyo3 = {version = "0.15", features=["auto-initialize"]}
+
 
 [dev-dependencies]
 tokio-test = "0.4"
